@@ -5,13 +5,12 @@ import datetime
 load_dotenv()
 
 
-class NetworkConfig:
+class ServerConfig:
     SERVER_HOST = os.getenv("HOST", "127.0.0.1")
     SERVER_PORT = int(os.getenv("PORT", 5000))
     MAX_CLIENTS = int(os.getenv("MAX_CLIENTS", 5))
     TIMEOUT = int(os.getenv("TIMEOUT", 30))
     BUFFER_SIZE = int(os.getenv("BUFFER_SIZE", 8192))
-
 
 class DisplayConfig:
     FULLSCREEN = False
