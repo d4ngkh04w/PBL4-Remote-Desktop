@@ -7,7 +7,7 @@ load_dotenv()
 
 class NetworkConfig:
     SERVER_HOST = os.getenv("HOST", "127.0.0.1")
-    SERVER_PORT = int(os.getenv("PORT", 4444))
+    SERVER_PORT = int(os.getenv("PORT", 5000))
     MAX_CLIENTS = int(os.getenv("MAX_CLIENTS", 5))
     TIMEOUT = int(os.getenv("TIMEOUT", 30))
     BUFFER_SIZE = int(os.getenv("BUFFER_SIZE", 8192))
@@ -27,6 +27,12 @@ class SecurityConfig:
 
 
 class LoggingConfig:
-    LOG_FILE = os.getenv(
-        "LOG_FILE", f"logs/remote_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+    # LOG_FILE = os.getenv(
+    #     "LOG_FILE", f"logs/remote_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+    # )
+    LOG_SERVER = os.getenv(
+        "LOG_SERVER", f"logs/server_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+    )
+    LOG_CLIENT = os.getenv(
+        "LOG_CLIENT", f"logs/client_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
     )
