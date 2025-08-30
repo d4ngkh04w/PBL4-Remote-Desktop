@@ -1,7 +1,8 @@
 import socket
 from typing import Union
-from common.packet import ImagePacket, KeyBoardPacket, MousePacket
-import struct, pickle
+from common.packet import ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket,ConnectResponsePacket
+import struct
+import pickle
 import lz4.frame as lz4
 from common.enum import PacketType
 from common.safe_deserializer import SafeDeserializer
@@ -28,7 +29,7 @@ class Protocol:
     def send_packet(
         cls,
         sock: socket.socket,
-        packet: Union[ImagePacket, KeyBoardPacket, MousePacket],
+        packet: Union[ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket, ConnectResponsePacket],
     ) -> None:
         """
         Gửi gói tin
@@ -36,14 +37,15 @@ class Protocol:
         payload = pickle.dumps(packet)
         compressed_payload = lz4.compress(payload)
         length = len(compressed_payload)
-        header = struct.pack(cls._HEADER_FORMAT, length, packet.packet_type.value)
+        header = struct.pack(cls._HEADER_FORMAT, length,
+                             packet.packet_type.value)
         sock.sendall(header + compressed_payload)
 
     @classmethod
     def receive_packet(
         cls,
         sock: socket.socket,
-    ) -> Union[ImagePacket, KeyBoardPacket, MousePacket]:
+    ) -> Union[ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket, ConnectResponsePacket]:
         """
         Nhận gói tin
         """
@@ -57,6 +59,10 @@ class Protocol:
             PacketType.IMAGE.value,
             PacketType.KEYBOARD.value,
             PacketType.MOUSE.value,
+            PacketType.ID_REQUEST.value,
+            PacketType.ID_RESPONSE.value,
+            PacketType.CONNECT_REQUEST.value,
+            PacketType.CONNECT_RESPONSE.value,
         }
 
         if packet_type not in valid_packet_types:

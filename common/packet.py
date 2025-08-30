@@ -34,3 +34,41 @@ class MousePacket:
         self.event_type = event_type
         self.button = button
         self.position = position
+
+class IDRequestPacket:
+    """
+    Yêu cầu cấp ID từ sever
+    """
+
+    def __init__(self):
+        self.packet_type = PacketType.ID_REQUEST
+
+class IDResponsePacket:
+    """
+    Server trả về ID và password
+    """
+
+    def __init__(self, client_id: str, temp_password: str):
+        self.packet_type = PacketType.ID_RESPONSE
+        self.client_id = client_id
+        self.temp_password = temp_password
+
+class ConnectRequestPacket:
+    """
+    Yêu cầu kết nối từ client
+    """
+
+    def __init__(self, client_id: str, temp_password: str):
+        self.packet_type = PacketType.CONNECT_REQUEST
+        self.client_id = client_id
+        self.temp_password = temp_password
+
+class ConnectResponsePacket:
+    """
+    Phản hồi yêu cầu kết nối từ server
+    """
+
+    def __init__(self, success: bool, message: str):
+        self.packet_type = PacketType.CONNECT_RESPONSE
+        self.success = success
+        self.message = message

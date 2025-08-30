@@ -1,7 +1,7 @@
 import pickle
 import io
 from typing import Union, Type
-from packet import ImagePacket, KeyBoardPacket, MousePacket
+from common.packet import ImagePacket, KeyBoardPacket, MousePacket
 
 
 class SafeDeserializer:

@@ -38,3 +38,8 @@ class PacketType(Enum):
     IMAGE = 1
     KEYBOARD = 2
     MOUSE = 3
+    ID_REQUEST = 4
+    ID_RESPONSE = 5
+    CONNECT_REQUEST = 6
+    CHAT_MESSAGE = 7
+    FILE_TRANSFER = 8

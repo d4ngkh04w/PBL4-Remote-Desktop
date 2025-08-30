@@ -1,6 +1,7 @@
 from server.listener import Listener
 from client.connection import Connection
 from common.logger import logger
+from client import client
 import sys
 
 
@@ -8,13 +9,14 @@ if len(sys.argv) > 1 and sys.argv[1] == "--client":
     conn = None
     try:
         logger.info("Starting client...")
-        conn = Connection()
-        conn.connect()
+        client_instance = client.RemoteDesktopClient()
+        client_instance.run()
+        
         logger.info("Client started successfully")
     except KeyboardInterrupt:
         logger.info("Client stopped by user")
-        if conn:
-            conn.disconnect()
+        if client_instance:
+            client_instance.shutdown()
     except Exception as e:
         logger.error(f"Failed to start client: {e}")
         sys.exit(1)
