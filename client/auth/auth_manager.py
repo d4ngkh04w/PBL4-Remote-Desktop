@@ -2,11 +2,12 @@ import os
 import json
 from venv import logger
 from common.packet import IDRequestPacket, IDResponsePacket
+from client.network.network_client import NetworkClient
 class AuthManager:
     """Quản lý ID và Password cho client"""
 
-    def __init__(self, network_client):
-        self.network_client = network_client        
+    def __init__(self, network_client: NetworkClient):
+        self.network_client = network_client
         self.client_id = 123456789
         self.temp_password = "abc123"
         self.is_authenticated = True
@@ -16,7 +17,7 @@ class AuthManager:
         try:
             #Gửi yêu cầu cấp ID đến server
             request_packet = IDRequestPacket()
-            self.network_client.send_request(request_packet)
+            self.network_client.send(request_packet)
             logger.info("Requested ID from server")
         except Exception as e:
             logger.error(f"Error requesting ID from server: {e}")

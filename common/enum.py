@@ -38,8 +38,9 @@ class PacketType(Enum):
     IMAGE = 1
     KEYBOARD = 2
     MOUSE = 3
-    ID_REQUEST = 4
-    ID_RESPONSE = 5
-    CONNECT_REQUEST = 6
-    CHAT_MESSAGE = 7
-    FILE_TRANSFER = 8
+    ID_REQUEST = 4 # Yêu cầu ID và Password
+    ID_RESPONSE = 5 # Phản hồi ID và Password
+    CONNECT_REQUEST = 6 # Yêu cầu kết nối
+    CONNECT_RESPONSE = 7 # Phản hồi kết nối
+    CHAT_MESSAGE = 8 # Tin nhắn trò chuyện
+    FILE_TRANSFER = 9 # Chuyển file
