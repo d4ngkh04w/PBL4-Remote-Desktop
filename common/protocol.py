@@ -9,11 +9,13 @@ import lz4.frame as lz4
 from common.enum import PacketType
 from common.packet import (
     AssignIdPacket,
-    ConnectResponsePacket,
+    SendPasswordPacket,
     ImagePacket,
     KeyBoardPacket,
     MousePacket,
     RequestConnectionPacket,
+    RequestPasswordPacket,
+    ResponseConnectionPacket,
 )
 from common.safe_deserializer import SafeDeserializer
 
@@ -45,7 +47,9 @@ class Protocol:
             MousePacket,
             AssignIdPacket,
             RequestConnectionPacket,
-            ConnectResponsePacket,
+            ResponseConnectionPacket,
+            SendPasswordPacket,
+            RequestPasswordPacket,
         ],
     ) -> None:
         """
@@ -64,7 +68,9 @@ class Protocol:
         MousePacket,
         AssignIdPacket,
         RequestConnectionPacket,
-        ConnectResponsePacket,
+        ResponseConnectionPacket,
+        SendPasswordPacket,
+        RequestPasswordPacket,
     ]:
         """
         Nhận gói tin
@@ -82,7 +88,9 @@ class Protocol:
             PacketType.MOUSE.value,
             PacketType.ASSIGN_ID.value,
             PacketType.REQUEST_CONNECTION.value,
-            PacketType.CONNECT_RESPONSE.value,
+            PacketType.AUTHENTICATION_RESPONSE.value,
+            PacketType.AUTHENTICATION_REQUEST.value,
+            PacketType.RESPONSE_CONNECTION.value,
         }
 
         if packet_type not in valid_packet_types:

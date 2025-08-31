@@ -1,4 +1,5 @@
 import sys
+import time
 
 from common.logger import logger
 
@@ -12,6 +13,8 @@ if len(sys.argv) > 1 and sys.argv[1] == "--client":
         client_instance = network_client.NetworkClient()
         client_instance.connect()
         logger.info("Client started successfully")
+        while client_instance.running:
+            time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Client stopped by user")
         if client_instance:

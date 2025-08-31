@@ -4,12 +4,14 @@ from typing import Type, Union
 
 from common.packet import (
     AssignIdPacket,
-    ConnectResponsePacket,
+    SendPasswordPacket,
     ImagePacket,
     KeyBoardPacket,
     MousePacket,
     PacketType,
     RequestConnectionPacket,
+    RequestPasswordPacket,
+    ResponseConnectionPacket,
 )
 
 
@@ -20,8 +22,10 @@ class SafeDeserializer:
         "KeyBoardPacket": KeyBoardPacket,
         "MousePacket": MousePacket,
         "AssignIdPacket": AssignIdPacket,
-        "ConnectResponsePacket": ConnectResponsePacket,
+        "SendPasswordPacket": SendPasswordPacket,
+        "RequestPasswordPacket": RequestPasswordPacket,
         "RequestConnectionPacket": RequestConnectionPacket,
+        "ResponseConnectionPacket": ResponseConnectionPacket,
         "PacketType": PacketType,
     }
 
@@ -47,8 +51,10 @@ class SafeDeserializer:
         KeyBoardPacket,
         MousePacket,
         AssignIdPacket,
-        ConnectResponsePacket,
+        SendPasswordPacket,
         RequestConnectionPacket,
+        ResponseConnectionPacket,
+        RequestPasswordPacket,
     ]:
         """
         Deserializes data with whitelist protection
@@ -69,8 +75,10 @@ class SafeDeserializer:
                 KeyBoardPacket,
                 MousePacket,
                 AssignIdPacket,
-                ConnectResponsePacket,
+                SendPasswordPacket,
                 RequestConnectionPacket,
+                ResponseConnectionPacket,
+                RequestPasswordPacket,
             ),
         ):
             raise ValueError(

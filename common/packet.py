@@ -60,7 +60,7 @@ class AssignIdPacket:
 
 class RequestConnectionPacket:
     """
-    Yêu cầu kết nối từ client
+    Yêu cầu kết nối từ controller -> host
     """
 
     def __init__(self, target_id: str):
@@ -71,15 +71,42 @@ class RequestConnectionPacket:
         return f"RequestConnectionPacket(type={self.packet_type}, target_id={self.target_id})"
 
 
-class ConnectResponsePacket:
+class ResponseConnectionPacket:
     """
-    Phản hồi yêu cầu kết nối từ server
+    Phản hồi kết nối từ host -> controller
     """
 
     def __init__(self, success: bool, message: str):
-        self.packet_type = PacketType.CONNECT_RESPONSE
+        self.packet_type = PacketType.RESPONSE_CONNECTION
         self.success = success
         self.message = message
 
     def __repr__(self):
-        return f"ConnectResponsePacket(type={self.packet_type}, success={self.success}, message={self.message})"
+        return f"ResponseConnectionPacket(type={self.packet_type}, success={self.success}, message={self.message})"
+
+
+class SendPasswordPacket:
+    """
+    Phản hồi password lại cho máy host
+    """
+
+    def __init__(self, host_id: str, password: str):
+        self.packet_type = PacketType.AUTHENTICATION_RESPONSE
+        self.host_id = host_id
+        self.password = password
+
+    def __repr__(self):
+        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id})"
+
+
+class RequestPasswordPacket:
+    """
+    Yêu cầu xác thực password từ host
+    """
+
+    def __init__(self, controller_id: str):
+        self.packet_type = PacketType.AUTHENTICATION_REQUEST
+        self.controller_id = controller_id
+
+    def __repr__(self):
+        return f"RequestPasswordPacket(type={self.packet_type}, controller_id={self.controller_id})"

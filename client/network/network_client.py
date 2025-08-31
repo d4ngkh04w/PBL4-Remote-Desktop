@@ -11,8 +11,11 @@ from common.packet import (
     KeyBoardPacket,
     MousePacket,
     RequestConnectionPacket,
+    RequestPasswordPacket,
+    SendPasswordPacket,
 )
 from common.protocol import Protocol
+from typing import Callable, Optional, Any
 
 
 class NetworkClient:
@@ -27,7 +30,7 @@ class NetworkClient:
 
         # Khóa để đảm bảo thread-safe vì nhiều thread có thể truy cập vào socket cùng lúc
         self._lock = threading.Lock()
-        self.on_message_received = None  # Callback xử lý khi nhận message
+        self.on_message_received: Optional[Callable[[Any], None]] = None
 
     def connect(self):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -56,7 +59,8 @@ class NetworkClient:
             KeyBoardPacket,
             MousePacket,
             RequestConnectionPacket,
-            # IDRequestPacket,
+            RequestPasswordPacket,
+            SendPasswordPacket,
         ],
     ):
         """Gửi packet đến server"""
