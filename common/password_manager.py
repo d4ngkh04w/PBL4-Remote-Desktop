@@ -14,7 +14,7 @@ class PasswordManager:
         """
         Tạo một mật khẩu ngẫu nhiên với độ dài cho trước.
         """
-        characters = string.ascii_letters + string.digits + string.punctuation
+        characters = string.ascii_letters + string.digits
         password = "".join(secrets.choice(characters) for _ in range(length))
         return password
 

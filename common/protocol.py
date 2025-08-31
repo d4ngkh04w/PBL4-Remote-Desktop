@@ -7,16 +7,7 @@ from typing import Union
 import lz4.frame as lz4
 
 from common.enum import PacketType
-from common.packet import (
-    AssignIdPacket,
-    SendPasswordPacket,
-    ImagePacket,
-    KeyBoardPacket,
-    MousePacket,
-    RequestConnectionPacket,
-    RequestPasswordPacket,
-    ResponseConnectionPacket,
-)
+from common.packet import Packet
 from common.safe_deserializer import SafeDeserializer
 
 
@@ -41,16 +32,7 @@ class Protocol:
     def send_packet(
         cls,
         sock: Union[socket.socket, ssl.SSLSocket],
-        packet: Union[
-            ImagePacket,
-            KeyBoardPacket,
-            MousePacket,
-            AssignIdPacket,
-            RequestConnectionPacket,
-            ResponseConnectionPacket,
-            SendPasswordPacket,
-            RequestPasswordPacket,
-        ],
+        packet: Packet,
     ) -> None:
         """
         Gửi gói tin
@@ -62,16 +44,7 @@ class Protocol:
         sock.sendall(header + compressed_payload)
 
     @classmethod
-    def receive_packet(cls, sock: Union[socket.socket, ssl.SSLSocket]) -> Union[
-        ImagePacket,
-        KeyBoardPacket,
-        MousePacket,
-        AssignIdPacket,
-        RequestConnectionPacket,
-        ResponseConnectionPacket,
-        SendPasswordPacket,
-        RequestPasswordPacket,
-    ]:
+    def receive_packet(cls, sock: Union[socket.socket, ssl.SSLSocket]) -> Packet:
         """
         Nhận gói tin
         """

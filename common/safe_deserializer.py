@@ -1,33 +1,14 @@
 import io
 import pickle
-from typing import Type, Union
+from typing import Type
 
-from common.packet import (
-    AssignIdPacket,
-    SendPasswordPacket,
-    ImagePacket,
-    KeyBoardPacket,
-    MousePacket,
-    PacketType,
-    RequestConnectionPacket,
-    RequestPasswordPacket,
-    ResponseConnectionPacket,
-)
+from common.packet import Packet, PacketType
 
 
 class SafeDeserializer:
 
-    ALLOWED_PACKET_CLASSES = {
-        "ImagePacket": ImagePacket,
-        "KeyBoardPacket": KeyBoardPacket,
-        "MousePacket": MousePacket,
-        "AssignIdPacket": AssignIdPacket,
-        "SendPasswordPacket": SendPasswordPacket,
-        "RequestPasswordPacket": RequestPasswordPacket,
-        "RequestConnectionPacket": RequestConnectionPacket,
-        "ResponseConnectionPacket": ResponseConnectionPacket,
-        "PacketType": PacketType,
-    }
+    ALLOWED_PACKET_CLASSES = {cls.__name__: cls for cls in Packet.__args__}
+    ALLOWED_PACKET_CLASSES["PacketType"] = PacketType
 
     class SafeUnpickler(pickle.Unpickler):
         def __init__(self, file, allowed_classes: dict[str, Type]):
@@ -46,16 +27,7 @@ class SafeDeserializer:
             )
 
     @classmethod
-    def safe_loads(cls, data: bytes) -> Union[
-        ImagePacket,
-        KeyBoardPacket,
-        MousePacket,
-        AssignIdPacket,
-        SendPasswordPacket,
-        RequestConnectionPacket,
-        ResponseConnectionPacket,
-        RequestPasswordPacket,
-    ]:
+    def safe_loads(cls, data: bytes) -> Packet:
         """
         Deserializes data with whitelist protection
         """
@@ -68,19 +40,7 @@ class SafeDeserializer:
         if not hasattr(packet, "packet_type"):
             raise ValueError("Deserialized object is missing packet_type attribute")
 
-        if not isinstance(
-            packet,
-            (
-                ImagePacket,
-                KeyBoardPacket,
-                MousePacket,
-                AssignIdPacket,
-                SendPasswordPacket,
-                RequestConnectionPacket,
-                ResponseConnectionPacket,
-                RequestPasswordPacket,
-            ),
-        ):
+        if not isinstance(packet, (Packet, PacketType)):
             raise ValueError(
                 f"Deserialized object is not a valid packet type: {type(packet)}"
             )

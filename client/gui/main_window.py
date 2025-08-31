@@ -1,10 +1,25 @@
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import (
+    QMainWindow,
+    QTabWidget,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QLabel,
+    QPushButton,
+    QGroupBox,
+    QLineEdit,
+    QMessageBox,
+    QStatusBar,
+    QApplication,
+)
 from PyQt5.QtCore import Qt
 from client.auth.auth_manager import AuthManager
 from client.network.network_client import NetworkClient
 from common.logger import logger
 from common.packet import RequestConnectionPacket
 from common.enum import PacketType
+from common.password_manager import PasswordManager
 
 
 class MainWindow(QMainWindow):
@@ -16,6 +31,12 @@ class MainWindow(QMainWindow):
         self.auth_manager = AuthManager(self.network_client)
         self.remote_widget = None
 
+        # Generate password tự động khi khởi tạo
+        self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
+
+        # Track cleanup state to avoid double cleanup
+        self._cleanup_done = False
+
         # UI components that need to be accessed later
         self.id_display = None
         self.password_display = None
@@ -26,7 +47,9 @@ class MainWindow(QMainWindow):
         # Setup
         self.init_ui()
         self.setup_connections()
-        self.request_id_from_server()
+
+        # Kết nối server sau khi UI đã được khởi tạo hoàn chỉnh
+        self.connect_to_server()
 
     def init_ui(self):
         """Khởi tạo giao diện người dùng"""
@@ -65,13 +88,11 @@ class MainWindow(QMainWindow):
 
         # Status bar
         self.status_bar = self.statusBar()
-        if self.status_bar:
-            self.status_bar.showMessage("Initializing...")
-        else:
+        if not self.status_bar:
             # Create status bar if it doesn't exist
             self.status_bar = QStatusBar()
             self.setStatusBar(self.status_bar)
-            self.status_bar.showMessage("Initializing...")
+        self.status_bar.showMessage("Initializing...")
 
     def create_host_tab(self):
         """Tab hiển thị ID của mình"""
@@ -145,7 +166,9 @@ class MainWindow(QMainWindow):
         )
         pass_layout = QVBoxLayout(pass_group)
 
-        self.password_display = QLabel("Waiting...")
+        self.password_display = QLabel(
+            self.my_password
+        )  # Hiển thị password đã generate
         self.password_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.password_display.setStyleSheet(
             """
@@ -195,8 +218,14 @@ class MainWindow(QMainWindow):
         copy_id_btn.setStyleSheet(self.refresh_btn.styleSheet())
         copy_id_btn.clicked.connect(self.copy_id)
 
+        copy_pass_btn = QPushButton("📋 Copy Password")
+        copy_pass_btn.setMinimumHeight(40)
+        copy_pass_btn.setStyleSheet(self.refresh_btn.styleSheet())
+        copy_pass_btn.clicked.connect(self.copy_password)
+
         btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(copy_id_btn)
+        btn_layout.addWidget(copy_pass_btn)
         layout.addLayout(btn_layout)
 
         layout.addStretch()
@@ -307,40 +336,48 @@ class MainWindow(QMainWindow):
                 "partner_pass_input is None, cannot connect returnPressed signal"
             )
 
-    # def request_id_from_server(self):
-    #     """Yêu cầu ID từ server"""
-    #     try:
-    #         if self.network_client.connect():
-    #             request_packet = IDRequestPacket()
-    #             self.network_client.send(request_packet)
-    #             self.statusBar().showMessage("Connected to server, requesting ID...")
-    #             logger.info("ID request sent to server")
-    #         else:
-    #             self.statusBar().showMessage("Failed to connect to server")
-    #             self.show_connection_error()
-    #     except Exception as e:
-    #         logger.error(f"Error requesting ID from server: {e}")
-    #         self.show_connection_error()
+    def connect_to_server(self):
+        """Kết nối đến server để nhận ID"""
+        try:
+            if self.network_client.connect():
+                if hasattr(self, "status_bar") and self.status_bar:
+                    self.status_bar.showMessage(
+                        "Connected to server, waiting for ID..."
+                    )
+                logger.info("Connected to server, waiting for ID assignment")
+            else:
+                if hasattr(self, "status_bar") and self.status_bar:
+                    self.status_bar.showMessage("Failed to connect to server")
+                self.show_connection_error()
+        except Exception as e:
+            logger.error(f"Error connecting to server: {e}")
+            self.show_connection_error()
 
     def show_connection_error(self):
         """Hiển thị lỗi kết nối"""
-        self.id_display.setText("Connection Failed")
-        self.id_display.setStyleSheet(
+        if hasattr(self, "id_display") and self.id_display:
+            self.id_display.setText("Connection Failed")
+            self.id_display.setStyleSheet(
+                """
+                QLabel {
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #dc3545;
+                    background-color: #f8d7da;
+                    border: 2px dashed #dc3545;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 5px;
+                }
             """
-            QLabel {
-                font-size: 20px;
-                font-weight: bold;
-                color: #dc3545;
-                background-color: #f8d7da;
-                border: 2px dashed #dc3545;
-                border-radius: 8px;
-                padding: 15px;
-                margin: 5px;
-            }
-        """
-        )
-        self.password_display.setText("Server Offline")
-        self.password_display.setStyleSheet(self.id_display.styleSheet())
+            )
+
+        if (
+            hasattr(self, "my_password")
+            and hasattr(self, "password_display")
+            and self.password_display
+        ):
+            self.password_display.setText(self.my_password)
 
     def handle_server_message(self, packet):
         """Xử lý tin nhắn từ server"""
@@ -360,8 +397,10 @@ class MainWindow(QMainWindow):
     def handle_assign_id(self, packet):
         """Xử lý phản hồi ID từ server"""
         if hasattr(packet, "client_id"):
-            self.id_display.setText(packet.client_id)
-            self.statusBar().showMessage("Ready - ID received from server")
+            if hasattr(self, "id_display") and self.id_display:
+                self.id_display.setText(packet.client_id)
+            if hasattr(self, "status_bar") and self.status_bar:
+                self.status_bar.showMessage("Ready - ID received from server")
             logger.info(f"Received ID: {packet.client_id}")
 
     def handle_authentication_response(self, packet):
@@ -397,7 +436,7 @@ class MainWindow(QMainWindow):
         try:
             connect_packet = RequestConnectionPacket(partner_id)
             self.network_client.send(connect_packet)
-            self.statusBar().showMessage(f"Connecting to Partner ID: {partner_id}")
+            self.status_bar.showMessage(f"Connecting to Partner ID: {partner_id}")
             logger.info(f"Connection request sent for partner: {partner_id}")
         except Exception as e:
             logger.error(f"Error sending connect request: {e}")
@@ -465,21 +504,87 @@ class MainWindow(QMainWindow):
 
     def refresh_password(self):
         """Làm mới password"""
-        # TODO: Send refresh request to server
-        self.password_display.setText("Refreshing...")
-        logger.info("Password refresh requested")
+        self.my_password = PasswordManager.generate_password(6)
+        if hasattr(self, "password_display") and self.password_display:
+            self.password_display.setText(self.my_password)
+        if hasattr(self, "status_bar") and self.status_bar:
+            self.status_bar.showMessage("Password refreshed", 2000)
+        logger.info("Password refreshed")
 
     def copy_id(self):
         """Copy ID to clipboard"""
-        if self.id_display.text() and self.id_display.text() != "Connecting...":
+        if (
+            hasattr(self, "id_display")
+            and self.id_display
+            and self.id_display.text()
+            and self.id_display.text() != "Connecting..."
+        ):
             clipboard = QApplication.clipboard()
             clipboard.setText(self.id_display.text())
-            self.statusBar().showMessage("ID copied to clipboard", 2000)
+            if hasattr(self, "status_bar") and self.status_bar:
+                self.status_bar.showMessage("ID copied to clipboard", 2000)
+
+    def copy_password(self):
+        """Copy password to clipboard"""
+        clipboard = QApplication.clipboard()
+        if hasattr(clipboard, "setText"):
+            clipboard.setText(self.my_password)
+        if hasattr(self, "status_bar") and self.status_bar:
+            self.status_bar.showMessage("Password copied to clipboard", 2000)
 
     def cleanup(self):
         """Dọn dẹp tài nguyên"""
-        if self.remote_widget:
-            self.remote_widget.cleanup()
-        if self.network_client:
-            self.network_client.disconnect()
-        logger.info("MainWindow cleanup completed")
+        if self._cleanup_done:
+            logger.info("Cleanup already performed, skipping...")
+            return
+
+        try:
+            logger.info("Starting cleanup process...")
+            self._cleanup_done = True
+
+            if self.remote_widget:
+                logger.info("Cleaning up remote widget...")
+                self.remote_widget.cleanup()
+
+            if self.network_client:
+                logger.info("Disconnecting from server...")
+                self.network_client.disconnect()
+
+            logger.info("MainWindow cleanup completed successfully")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+
+    def closeEvent(self, a0):
+        """Xử lý sự kiện đóng ứng dụng"""
+        logger.info("Application closing - performing cleanup...")
+        self.cleanup()
+        if a0:
+            a0.accept()  # Chấp nhận sự kiện đóng
+        super().closeEvent(a0)
+
+
+if __name__ == "__main__":
+    import sys
+    import signal
+
+    app = QApplication(sys.argv)
+    window = MainWindow()
+
+    # Đảm bảo cleanup khi nhận signal terminate
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, cleaning up...")
+        window.cleanup()
+        app.quit()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    window.show()
+
+    try:
+        exit_code = app.exec_()
+    finally:
+        # Đảm bảo cleanup được gọi dù có lỗi gì
+        window.cleanup()
+
+    sys.exit(exit_code)
