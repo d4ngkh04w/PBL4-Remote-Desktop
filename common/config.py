@@ -1,6 +1,7 @@
-import os
-from dotenv import load_dotenv
 import datetime
+import os
+
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -8,9 +9,7 @@ load_dotenv()
 class ServerConfig:
     SERVER_HOST = os.getenv("HOST", "127.0.0.1")
     SERVER_PORT = int(os.getenv("PORT", 5000))
-    MAX_CLIENTS = int(os.getenv("MAX_CLIENTS", 5))
-    TIMEOUT = int(os.getenv("TIMEOUT", 30))
-    BUFFER_SIZE = int(os.getenv("BUFFER_SIZE", 8192))
+
 
 class DisplayConfig:
     FULLSCREEN = False
@@ -21,14 +20,12 @@ class DisplayConfig:
 
 
 class SecurityConfig:
-    ENCRYPTION_ENABLED = True
     SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", 3600))
+    CERT_FILE = os.getenv("CERT_FILE", "cert.pem")
+    KEY_FILE = os.getenv("KEY_FILE", "key.pem")
 
 
 class LoggingConfig:
-    # LOG_FILE = os.getenv(
-    #     "LOG_FILE", f"logs/remote_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
-    # )
     LOG_SERVER = os.getenv(
         "LOG_SERVER", f"logs/server_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
     )

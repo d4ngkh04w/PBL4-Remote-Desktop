@@ -1,12 +1,11 @@
 import sys
 
-from client import client
-from client.network import network_client
 from common.logger import logger
-from server.listener import Listener
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "--client":
+    from client.network import network_client
+
     client_instance = None
     try:
         logger.info("Starting client...")
@@ -17,20 +16,11 @@ if len(sys.argv) > 1 and sys.argv[1] == "--client":
         logger.info("Client stopped by user")
         if client_instance:
             client_instance.disconnect()
-    # try:
-    #     logger.info("Starting client...")
-    #     client_instance = client.RemoteDesktopClient()
-    #     client_instance.run()
 
-    #     logger.info("Client started successfully")
-    # except KeyboardInterrupt:
-    #     logger.info("Client stopped by user")
-    #     if client_instance:
-    #         client_instance.shutdown()
-    # except Exception as e:
-    #     logger.error(f"Failed to start client: {e}")
-    #     sys.exit(1)
 elif len(sys.argv) > 1 and sys.argv[1] == "--server":
+    from common.database import db
+    from server.listener import Listener
+
     listener = None
     try:
         logger.info("Starting server...")

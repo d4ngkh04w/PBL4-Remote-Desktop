@@ -4,9 +4,24 @@ Test UI đơn giản cho Remote Desktop Client
 """
 
 import sys
-from PyQt5.QtWidgets import *
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import (
+    QApplication,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStatusBar,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class SimpleTestUI(QMainWindow):
@@ -30,10 +45,13 @@ class SimpleTestUI(QMainWindow):
         self.create_controller_tab()
 
         # Status bar
-        self.statusBar().showMessage("UI Test Mode - Ready")
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("UI Test Mode - Ready")
 
         # Apply simple styling
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QMainWindow {
                 background-color: #f0f0f0;
             }
@@ -50,7 +68,8 @@ class SimpleTestUI(QMainWindow):
                 background-color: white;
                 border-bottom: 2px solid #0066cc;
             }
-        """)
+        """
+        )
 
     def create_host_tab(self):
         """Tab hiển thị ID của mình - Test Version"""
@@ -59,7 +78,7 @@ class SimpleTestUI(QMainWindow):
 
         # Title
         title = QLabel("Your Computer ID")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFont(QFont("Arial", 16, QFont.Bold))
         layout.addWidget(title)
 
@@ -68,8 +87,9 @@ class SimpleTestUI(QMainWindow):
         id_layout = QVBoxLayout()
 
         self.id_display = QLabel("123 456 789")
-        self.id_display.setAlignment(Qt.AlignCenter)
-        self.id_display.setStyleSheet("""
+        self.id_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.id_display.setStyleSheet(
+            """
             QLabel {
                 font-size: 28px;
                 font-weight: bold;
@@ -80,7 +100,8 @@ class SimpleTestUI(QMainWindow):
                 padding: 15px;
                 margin: 10px;
             }
-        """)
+        """
+        )
         id_layout.addWidget(self.id_display)
         id_group.setLayout(id_layout)
         layout.addWidget(id_group)
@@ -90,8 +111,9 @@ class SimpleTestUI(QMainWindow):
         pass_layout = QVBoxLayout()
 
         self.password_display = QLabel("abc123")
-        self.password_display.setAlignment(Qt.AlignCenter)
-        self.password_display.setStyleSheet("""
+        self.password_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.password_display.setStyleSheet(
+            """
             QLabel {
                 font-size: 20px;
                 font-weight: bold;
@@ -102,7 +124,8 @@ class SimpleTestUI(QMainWindow):
                 padding: 10px;
                 margin: 10px;
             }
-        """)
+        """
+        )
         pass_layout.addWidget(self.password_display)
         pass_group.setLayout(pass_layout)
         layout.addWidget(pass_group)
@@ -112,7 +135,8 @@ class SimpleTestUI(QMainWindow):
 
         self.refresh_btn = QPushButton("🔄 Refresh Password")
         self.refresh_btn.setMinimumHeight(40)
-        self.refresh_btn.setStyleSheet("""
+        self.refresh_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
@@ -128,13 +152,15 @@ class SimpleTestUI(QMainWindow):
             QPushButton:pressed {
                 background-color: #3d8b40;
             }
-        """)
+        """
+        )
         self.refresh_btn.clicked.connect(self.refresh_password)
         btn_layout.addWidget(self.refresh_btn)
 
         self.copy_id_btn = QPushButton("📋 Copy ID")
         self.copy_id_btn.setMinimumHeight(40)
-        self.copy_id_btn.setStyleSheet("""
+        self.copy_id_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2196F3;
                 color: white;
@@ -150,7 +176,8 @@ class SimpleTestUI(QMainWindow):
             QPushButton:pressed {
                 background-color: #1565C0;
             }
-        """)
+        """
+        )
         self.copy_id_btn.clicked.connect(self.copy_id)
         btn_layout.addWidget(self.copy_id_btn)
 
@@ -167,7 +194,7 @@ class SimpleTestUI(QMainWindow):
 
         # Title
         title = QLabel("Connect to Partner Computer")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFont(QFont("Arial", 16, QFont.Bold))
         layout.addWidget(title)
 
@@ -177,10 +204,10 @@ class SimpleTestUI(QMainWindow):
 
         # Partner ID
         self.partner_id_input = QLineEdit()
-        self.partner_id_input.setPlaceholderText(
-            "Enter Partner ID (e.g. 123456789)")
+        self.partner_id_input.setPlaceholderText("Enter Partner ID (e.g. 123456789)")
         self.partner_id_input.setMaxLength(9)
-        self.partner_id_input.setStyleSheet("""
+        self.partner_id_input.setStyleSheet(
+            """
             QLineEdit {
                 padding: 8px;
                 font-size: 14px;
@@ -190,14 +217,16 @@ class SimpleTestUI(QMainWindow):
             QLineEdit:focus {
                 border-color: #0066cc;
             }
-        """)
+        """
+        )
         connect_layout.addRow("Partner ID:", self.partner_id_input)
 
         # Password
         self.partner_pass_input = QLineEdit()
         self.partner_pass_input.setPlaceholderText("Enter Password")
         self.partner_pass_input.setEchoMode(QLineEdit.Password)
-        self.partner_pass_input.setStyleSheet("""
+        self.partner_pass_input.setStyleSheet(
+            """
             QLineEdit {
                 padding: 8px;
                 font-size: 14px;
@@ -207,13 +236,15 @@ class SimpleTestUI(QMainWindow):
             QLineEdit:focus {
                 border-color: #0066cc;
             }
-        """)
+        """
+        )
         connect_layout.addRow("Password:", self.partner_pass_input)
 
         # Connect Button
         self.connect_btn = QPushButton("🔗 Connect to Partner")
         self.connect_btn.setMinimumHeight(50)
-        self.connect_btn.setStyleSheet("""
+        self.connect_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #FF5722;
                 color: white;
@@ -229,7 +260,8 @@ class SimpleTestUI(QMainWindow):
             QPushButton:pressed {
                 background-color: #D84315;
             }
-        """)
+        """
+        )
         self.connect_btn.clicked.connect(self.connect_to_partner)
         connect_layout.addRow("", self.connect_btn)
 
@@ -241,8 +273,9 @@ class SimpleTestUI(QMainWindow):
         status_layout = QVBoxLayout()
 
         self.status_label = QLabel("Ready to connect")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("""
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet(
+            """
             QLabel {
                 padding: 10px;
                 font-size: 14px;
@@ -250,7 +283,8 @@ class SimpleTestUI(QMainWindow):
                 background-color: #f5f5f5;
                 border-radius: 4px;
             }
-        """)
+        """
+        )
         status_layout.addWidget(self.status_label)
 
         status_group.setLayout(status_layout)
@@ -264,11 +298,10 @@ class SimpleTestUI(QMainWindow):
         """Test refresh password"""
         import random
         import string
-        new_pass = ''.join(random.choices(
-            string.ascii_lowercase + string.digits, k=6))
+
+        new_pass = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
         self.password_display.setText(new_pass)
-        QMessageBox.information(
-            self, "Success", f"New password generated: {new_pass}")
+        QMessageBox.information(self, "Success", f"New password generated: {new_pass}")
 
     def copy_id(self):
         """Test copy ID"""
@@ -282,10 +315,12 @@ class SimpleTestUI(QMainWindow):
         password = self.partner_pass_input.text().strip()
 
         if not partner_id or not password:
-            QMessageBox.warning(self, "Missing Information",
-                                "Please enter both Partner ID and Password")
+            QMessageBox.warning(
+                self, "Missing Information", "Please enter both Partner ID and Password"
+            )
             self.status_label.setText("❌ Missing information")
-            self.status_label.setStyleSheet("""
+            self.status_label.setStyleSheet(
+                """
                 QLabel {
                     padding: 10px;
                     font-size: 14px;
@@ -293,14 +328,17 @@ class SimpleTestUI(QMainWindow):
                     background-color: #ffebee;
                     border-radius: 4px;
                 }
-            """)
+            """
+            )
             return
 
         if len(partner_id) != 9 or not partner_id.isdigit():
-            QMessageBox.warning(self, "Invalid ID",
-                                "Partner ID must be exactly 9 digits")
+            QMessageBox.warning(
+                self, "Invalid ID", "Partner ID must be exactly 9 digits"
+            )
             self.status_label.setText("❌ Invalid ID format")
-            self.status_label.setStyleSheet("""
+            self.status_label.setStyleSheet(
+                """
                 QLabel {
                     padding: 10px;
                     font-size: 14px;
@@ -308,12 +346,14 @@ class SimpleTestUI(QMainWindow):
                     background-color: #ffebee;
                     border-radius: 4px;
                 }
-            """)
+            """
+            )
             return
 
         # Simulate connection
         self.status_label.setText("🔄 Connecting...")
-        self.status_label.setStyleSheet("""
+        self.status_label.setStyleSheet(
+            """
             QLabel {
                 padding: 10px;
                 font-size: 14px;
@@ -321,15 +361,20 @@ class SimpleTestUI(QMainWindow):
                 background-color: #fff8e1;
                 border-radius: 4px;
             }
-        """)
+        """
+        )
 
-        QMessageBox.information(self, "Test Mode",
-                                f"Would connect to Partner ID: {partner_id}\n" +
-                                f"With password: {password}\n\n" +
-                                "This is just a UI test!")
+        QMessageBox.information(
+            self,
+            "Test Mode",
+            f"Would connect to Partner ID: {partner_id}\n"
+            + f"With password: {password}\n\n"
+            + "This is just a UI test!",
+        )
 
         self.status_label.setText("✅ Connected (Test Mode)")
-        self.status_label.setStyleSheet("""
+        self.status_label.setStyleSheet(
+            """
             QLabel {
                 padding: 10px;
                 font-size: 14px;
@@ -337,7 +382,8 @@ class SimpleTestUI(QMainWindow):
                 background-color: #e8f5e8;
                 border-radius: 4px;
             }
-        """)
+        """
+        )
 
 
 def main():

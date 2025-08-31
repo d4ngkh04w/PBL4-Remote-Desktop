@@ -4,3 +4,7 @@ venv*/
 .vscode/
 __pycache__/
 logs/
+*.key
+*.pem
+!cert.pem
+*.db

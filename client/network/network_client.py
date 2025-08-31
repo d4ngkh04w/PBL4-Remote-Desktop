@@ -1,61 +1,71 @@
-from common.config import ServerConfig
-from common.logger import logger
-import common.protocol as protocol
 import socket
+import ssl
 import threading
-from typing import Union
 import time
+from typing import Union
+
+from common.config import SecurityConfig, ServerConfig
+from common.logger import logger
+from common.packet import (
+    ImagePacket,
+    KeyBoardPacket,
+    MousePacket,
+    RequestConnectionPacket,
+)
+from common.protocol import Protocol
+
 
 class NetworkClient:
-    def __init__(self, server_host=ServerConfig.SERVER_HOST, server_port=ServerConfig.SERVER_PORT):
+    def __init__(
+        self, server_host=ServerConfig.SERVER_HOST, server_port=ServerConfig.SERVER_PORT
+    ):
         self.host = server_host
         self.port = server_port
-        self.sock = None
+        self.socket = None
         self.running = False
         self.listener_thread = None  # Thread để lắng nghe dữ liệu từ server
-        
+
         # Khóa để đảm bảo thread-safe vì nhiều thread có thể truy cập vào socket cùng lúc
         self._lock = threading.Lock()
         self.on_message_received = None  # Callback xử lý khi nhận message
 
     def connect(self):
-        """Kết nối đến server"""        
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.load_verify_locations(SecurityConfig.CERT_FILE)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = False
+
+        plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # Timeout 10 giây cho kết nối, tức là nếu không kết nối được trong 10 giây sẽ báo lỗi
-            self.sock.settimeout(10)
-            self.sock.connect((self.host, self.port))
+            self.socket = context.wrap_socket(plain_socket, server_hostname=self.host)
+            self.socket.settimeout(10)
+            self.socket.connect((self.host, self.port))
             self.running = True
             logger.info(f"Connected to server at {self.host}:{self.port}")
 
-            # Tạo thread để nghe dữ liệu từ server
-            self.listener_thread = threading.Thread(
-                target=self.listener_loop, daemon=True)
-            self.listener_thread.start()            
-
+            self.listener_thread = threading.Thread(target=self.listener_loop)
+            self.listener_thread.start()
         except Exception as e:
-            logger.error(
-                f"Failed to connect to server {self.host}:{self.port} - {e}")
-            raise
-        # except socket.gaierror as e:
-        #     logger.error(f"DNS resolution failed for {self.host} - {e}")
-        #     raise
-        # except socket.timeout:
-        #     logger.error(f"Connection timeout to {self.host}:{self.port}")
-        #     raise
-        # except Exception as e:
-        #     logger.error(
-        #         f"Failed to connect to server {self.host}:{self.port} - {e}")
-        #     raise
+            logger.error(f"Failed to connect to server {self.host}:{self.port} - {e}")
+            self.disconnect()
 
-    def send(self, packet: Union[protocol.ImagePacket, protocol.KeyBoardPacket, protocol.MousePacket]):
+    def send(
+        self,
+        packet: Union[
+            ImagePacket,
+            KeyBoardPacket,
+            MousePacket,
+            RequestConnectionPacket,
+            # IDRequestPacket,
+        ],
+    ):
         """Gửi packet đến server"""
-        if self.sock is None or not self.running:
+        if self.socket is None or not self.running:
             logger.warning("Not connected to server")
             return
         try:
             with self._lock:
-                protocol.Protocol.send_packet(self.sock, packet)
+                Protocol.send_packet(self.socket, packet)
         except Exception as e:
             logger.error(f"Failed to send data to server - {e}")
             self.disconnect()
@@ -64,9 +74,18 @@ class NetworkClient:
         """Vòng lặp lắng nghe dữ liệu từ server"""
         while self.running:
             try:
-                packet = protocol.Protocol.receive_packet(self.sock)
-                if self.on_message_received:
-                    self.on_message_received(packet)
+                if self.socket is None:
+                    logger.warning("Not connected to server")
+                    return
+                self.socket.settimeout(0.5)
+                packet = Protocol.receive_packet(self.socket)
+                if packet:
+                    logger.debug(f"Received packet: {packet}")
+                    if self.on_message_received:
+                        self.on_message_received(packet)
+
+            except socket.timeout:
+                continue
             except Exception as e:
                 logger.error(f"Error receiving data from server - {e}")
                 self.disconnect()
@@ -74,15 +93,16 @@ class NetworkClient:
     def disconnect(self):
         """Ngắt kết nối đến server"""
         self.running = False
-        if self.sock:
-            try:
-                self.sock.close()
-            except Exception as e:
-                logger.error(f"Error closing socket - {e}")
-            self.sock = None
+        if self.socket:
+            self.socket.close()
+            self.socket = None
             logger.info(f"Disconnected from server {self.host}:{self.port}")
-        if self.listener_thread and self.listener_thread.is_alive():
-            self.listener_thread.join(timeout=1) # Đợi thread kết thúc
+        if (
+            self.listener_thread
+            and self.listener_thread.is_alive()
+            and self.listener_thread != threading.current_thread()
+        ):
+            self.listener_thread.join(timeout=1)  # Đợi thread kết thúc
             self.listener_thread = None
 
     # Giới hạn số lần thử kết nối lại
@@ -94,7 +114,9 @@ class NetworkClient:
         self.disconnect()
 
         for attempt in range(max_attempts):
-            logger.info(f"Attempting to reconnect to server {self.host}:{self.port} (Attempt {attempt + 1}/{max_attempts})")
+            logger.info(
+                f"Attempting to reconnect to server {self.host}:{self.port} (Attempt {attempt + 1}/{max_attempts})"
+            )
             try:
                 if self.connect():
                     logger.info("Reconnected successfully")
@@ -104,6 +126,7 @@ class NetworkClient:
 
             if attempt < max_attempts - 1:
                 time.sleep(2)  # Wait before retrying
-        logger.error(f"Failed to reconnect to server {self.host}:{self.port} after {max_attempts} attempts")
+        logger.error(
+            f"Failed to reconnect to server {self.host}:{self.port} after {max_attempts} attempts"
+        )
         return False
-    

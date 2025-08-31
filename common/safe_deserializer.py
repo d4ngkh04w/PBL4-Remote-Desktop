@@ -1,7 +1,16 @@
-import pickle
 import io
-from typing import Union, Type
-from common.packet import ImagePacket, KeyBoardPacket, MousePacket
+import pickle
+from typing import Type, Union
+
+from common.packet import (
+    AssignIdPacket,
+    ConnectResponsePacket,
+    ImagePacket,
+    KeyBoardPacket,
+    MousePacket,
+    PacketType,
+    RequestConnectionPacket,
+)
 
 
 class SafeDeserializer:
@@ -10,6 +19,10 @@ class SafeDeserializer:
         "ImagePacket": ImagePacket,
         "KeyBoardPacket": KeyBoardPacket,
         "MousePacket": MousePacket,
+        "AssignIdPacket": AssignIdPacket,
+        "ConnectResponsePacket": ConnectResponsePacket,
+        "RequestConnectionPacket": RequestConnectionPacket,
+        "PacketType": PacketType,
     }
 
     class SafeUnpickler(pickle.Unpickler):
@@ -29,7 +42,14 @@ class SafeDeserializer:
             )
 
     @classmethod
-    def safe_loads(cls, data: bytes) -> Union[ImagePacket, KeyBoardPacket, MousePacket]:
+    def safe_loads(cls, data: bytes) -> Union[
+        ImagePacket,
+        KeyBoardPacket,
+        MousePacket,
+        AssignIdPacket,
+        ConnectResponsePacket,
+        RequestConnectionPacket,
+    ]:
         """
         Deserializes data with whitelist protection
         """
@@ -42,7 +62,17 @@ class SafeDeserializer:
         if not hasattr(packet, "packet_type"):
             raise ValueError("Deserialized object is missing packet_type attribute")
 
-        if not isinstance(packet, (ImagePacket, KeyBoardPacket, MousePacket)):
+        if not isinstance(
+            packet,
+            (
+                ImagePacket,
+                KeyBoardPacket,
+                MousePacket,
+                AssignIdPacket,
+                ConnectResponsePacket,
+                RequestConnectionPacket,
+            ),
+        ):
             raise ValueError(
                 f"Deserialized object is not a valid packet type: {type(packet)}"
             )

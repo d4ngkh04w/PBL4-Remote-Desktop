@@ -1,5 +1,18 @@
-from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStatusBar,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Comment tạm để test UI
 # from client.auth.auth_manager import AuthManager
@@ -28,7 +41,10 @@ class MainWindow(QMainWindow):
         self.create_host_tab()
         self.create_controller_tab()
 
-        self.statusBar().showMessage("Ready (Test Mode)")
+        # Create status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready (Test Mode)")
 
     def create_host_tab(self):
         """Tab hiển thị ID của mình"""
@@ -40,8 +56,9 @@ class MainWindow(QMainWindow):
         id_layout = QVBoxLayout()
 
         id_display = QLabel("123456789")  # Mock data
-        id_display.setAlignment(Qt.AlignCenter)
-        id_display.setStyleSheet("""
+        id_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        id_display.setStyleSheet(
+            """
             QLabel {
                 font-size: 24px;
                 font-weight: bold;
@@ -51,7 +68,8 @@ class MainWindow(QMainWindow):
                 padding: 10px;
                 margin: 5px;
             }
-        """)
+        """
+        )
         id_layout.addWidget(id_display)
         id_group.setLayout(id_layout)
         layout.addWidget(id_group)
@@ -61,8 +79,9 @@ class MainWindow(QMainWindow):
         pass_layout = QVBoxLayout()
 
         password_display = QLabel("abc123")  # Mock data
-        password_display.setAlignment(Qt.AlignCenter)
-        password_display.setStyleSheet("""
+        password_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        password_display.setStyleSheet(
+            """
             QLabel {
                 font-size: 18px;
                 font-weight: bold;
@@ -72,7 +91,8 @@ class MainWindow(QMainWindow):
                 padding: 8px;
                 margin: 5px;
             }
-        """)
+        """
+        )
         pass_layout.addWidget(password_display)
         pass_group.setLayout(pass_layout)
         layout.addWidget(pass_group)
@@ -134,11 +154,13 @@ class MainWindow(QMainWindow):
 
         if not partner_id or not password:
             QMessageBox.warning(
-                self, "Warning", "Please enter both Partner ID and Password")
+                self, "Warning", "Please enter both Partner ID and Password"
+            )
             return
 
         QMessageBox.information(
-            self, "Success", f"Connecting to Partner ID: {partner_id}")
+            self, "Success", f"Connecting to Partner ID: {partner_id}"
+        )
 
     def setup_connections(self):
         """Cài đặt kết nối tín hiệu và khe"""

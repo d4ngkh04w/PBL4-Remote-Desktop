@@ -1,10 +1,20 @@
-import socket
-from typing import Union
-from common.packet import ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket,ConnectResponsePacket
-import struct
 import pickle
+import socket
+import ssl
+import struct
+from typing import Union
+
 import lz4.frame as lz4
+
 from common.enum import PacketType
+from common.packet import (
+    AssignIdPacket,
+    ConnectResponsePacket,
+    ImagePacket,
+    KeyBoardPacket,
+    MousePacket,
+    RequestConnectionPacket,
+)
 from common.safe_deserializer import SafeDeserializer
 
 
@@ -13,7 +23,7 @@ class Protocol:
     _HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
 
     @staticmethod
-    def _receive(sock: socket.socket, n: int) -> bytes:
+    def _receive(sock: Union[socket.socket, ssl.SSLSocket], n: int) -> bytes:
         """
         Nhận dữ liệu từ socket
         """
@@ -28,8 +38,15 @@ class Protocol:
     @classmethod
     def send_packet(
         cls,
-        sock: socket.socket,
-        packet: Union[ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket, ConnectResponsePacket],
+        sock: Union[socket.socket, ssl.SSLSocket],
+        packet: Union[
+            ImagePacket,
+            KeyBoardPacket,
+            MousePacket,
+            AssignIdPacket,
+            RequestConnectionPacket,
+            ConnectResponsePacket,
+        ],
     ) -> None:
         """
         Gửi gói tin
@@ -37,19 +54,23 @@ class Protocol:
         payload = pickle.dumps(packet)
         compressed_payload = lz4.compress(payload)
         length = len(compressed_payload)
-        header = struct.pack(cls._HEADER_FORMAT, length,
-                             packet.packet_type.value)
+        header = struct.pack(cls._HEADER_FORMAT, length, packet.packet_type.value)
         sock.sendall(header + compressed_payload)
 
     @classmethod
-    def receive_packet(
-        cls,
-        sock: socket.socket,
-    ) -> Union[ImagePacket, KeyBoardPacket, MousePacket, IDRequestPacket, IDResponsePacket, ConnectRequestPacket, ConnectResponsePacket]:
+    def receive_packet(cls, sock: Union[socket.socket, ssl.SSLSocket]) -> Union[
+        ImagePacket,
+        KeyBoardPacket,
+        MousePacket,
+        AssignIdPacket,
+        RequestConnectionPacket,
+        ConnectResponsePacket,
+    ]:
         """
         Nhận gói tin
         """
         header = cls._receive(sock, cls._HEADER_SIZE)
+
         length, packet_type = struct.unpack(cls._HEADER_FORMAT, header)
 
         if length < 0:
@@ -59,9 +80,8 @@ class Protocol:
             PacketType.IMAGE.value,
             PacketType.KEYBOARD.value,
             PacketType.MOUSE.value,
-            PacketType.ID_REQUEST.value,
-            PacketType.ID_RESPONSE.value,
-            PacketType.CONNECT_REQUEST.value,
+            PacketType.ASSIGN_ID.value,
+            PacketType.REQUEST_CONNECTION.value,
             PacketType.CONNECT_RESPONSE.value,
         }
 

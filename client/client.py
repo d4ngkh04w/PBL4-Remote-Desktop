@@ -1,9 +1,11 @@
 import sys
 from timeit import main
-from common.logger import logger
 
 from PyQt5.QtWidgets import QApplication
+
 from client.gui.main_window import MainWindow
+from common.logger import logger
+
 
 class RemoteDesktopClient:
     """
@@ -21,7 +23,7 @@ class RemoteDesktopClient:
             self.app = QApplication(sys.argv)
 
             # Thiết lập thông tin ứng dụng
-            self.app.setApplicationName("Remote Desktop Client")            
+            self.app.setApplicationName("Remote Desktop Client")
             # Tạo main  window
             self.main_window = MainWindow()
             logger.info("Client created successfully.")
@@ -57,5 +59,3 @@ class RemoteDesktopClient:
         except Exception as e:
             logger.error(f"Failed to shutdown application - {e}")
             return -1
-
-    

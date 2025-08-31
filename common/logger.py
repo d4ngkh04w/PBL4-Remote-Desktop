@@ -1,7 +1,8 @@
 import datetime
 import pathlib
-from common.config import LoggingConfig
 import sys
+
+from common.config import LoggingConfig
 
 
 class Logger:
