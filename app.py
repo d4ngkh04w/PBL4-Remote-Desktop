@@ -2,7 +2,7 @@ import sys
 
 from client import client
 from common.logger import logger
-from server.listener import Listener
+from server.server import Server
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "--client":
@@ -22,7 +22,7 @@ elif len(sys.argv) > 1 and sys.argv[1] == "--server":
     listener = None
     try:
         logger.info("Starting server...")
-        listener = Listener()
+        listener = Server()
         listener.start()
         logger.info("Server started successfully")
     except KeyboardInterrupt:

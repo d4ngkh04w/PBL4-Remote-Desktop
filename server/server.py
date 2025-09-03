@@ -7,14 +7,16 @@ from common.logger import logger
 from common.packet import AssignIdPacket
 from common.protocol import Protocol
 from common.utils import generate_numeric_id, format_numeric_id
+from common.database import get_db_instance
 
 
-class Listener:
+class Server:
     def __init__(self, host=ServerConfig.SERVER_HOST, port=ServerConfig.SERVER_PORT):
         self.host = host
         self.port = port
         self.socket = None
         self.is_listening = False
+        self.db = get_db_instance()
 
     def start(self):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

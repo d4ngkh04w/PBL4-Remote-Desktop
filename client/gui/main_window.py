@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
 
         # Generate password tự động khi khởi tạo
         self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
+        self.my_id = None
 
         # Track cleanup state to avoid double cleanup
         self._cleanup_done = False
@@ -79,16 +80,18 @@ class MainWindow(QMainWindow):
             }
         """
         )
-
-        # Central widget with tabs
+       
         # Central widget with tabs
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
-
-        # Create tabs
+        
         # Create tabs
         self.create_host_tab()
         self.create_controller_tab()
+
+
+        # Disable controller tab until connected to server
+        self.tabs.setTabEnabled(1, False)
 
         # Status bar
         self.status_bar = self.statusBar()
@@ -394,7 +397,8 @@ class MainWindow(QMainWindow):
                 }
             """
             )
-
+        # Disable controller tab if connection failed
+        self.tabs.setTabEnabled(1, False)
         if (
             hasattr(self, "my_password")
             and hasattr(self, "password_display")
@@ -424,7 +428,11 @@ class MainWindow(QMainWindow):
                 self.id_display.setText(packet.client_id)
             if hasattr(self, "status_bar") and self.status_bar:
                 self.status_bar.showMessage("Ready - ID received from server")
+            if hasattr(self, "my_id"):
+                self.my_id = packet.client_id
             logger.info(f"Received ID: {packet.client_id}")
+            # Enable controller tab when connected
+            self.tabs.setTabEnabled(1, True)
 
     def handle_authentication_response(self, packet):
         """Xử lý phản hồi kết nối từ server"""
@@ -458,7 +466,7 @@ class MainWindow(QMainWindow):
         self.connect_btn.setText("🔄 Connecting...")
 
         try:
-            connect_packet = RequestConnectionPacket(partner_id)
+            connect_packet = RequestConnectionPacket(partner_id, self.my_id)
             self.network_client.send(connect_packet)
             self.status_bar.showMessage(f"Connecting to Partner ID: {partner_id}")
             logger.info(f"Connection request sent for partner: {partner_id}")

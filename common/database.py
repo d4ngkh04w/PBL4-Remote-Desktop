@@ -9,7 +9,8 @@ class Database:
         self.__db_path = __db_path
         self.__conn = None
         try:
-            self.__conn = sqlite3.connect(self.__db_path, check_same_thread=False)
+            self.__conn = sqlite3.connect(
+                self.__db_path, check_same_thread=False)
             self.__conn.row_factory = sqlite3.Row
             logger.info(f"Successfully connected to database")
             self._create_tables()
@@ -65,19 +66,77 @@ class Database:
 
     def remove_client(self, client_id: str):
         """Xóa một client khỏi DB khi họ ngắt kết nối"""
-        pass
+        sql = "DELETE FROM clients WHERE client_id = ?"
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (client_id,))
+                self.__conn.commit()
+                logger.info(f"Removed client {client_id} from database")
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
 
     def update_client_status(self, client_id: str, new_status: str):
         """Cập nhật trạng thái của một client trong DB"""
-        pass
+        valid_statuses = ['ONLINE', 'IN_SESSION_HOST', 'IN_SESSION_CONTROLLER']
+        if new_status not in valid_statuses:
+            raise ValueError(f"Invalid status: {new_status}. Valid statuses are: {valid_statuses}")
+
+        sql = "UPDATE clients SET status = ? WHERE client_id = ?"
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (new_status, client_id))
+                self.__conn.commit()
+                logger.info(f"Updated client {client_id} status to {new_status}")
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
 
     def is_client_online(self, client_id: str) -> bool:
         """Kiểm tra xem một client có đang trực tuyến hay không"""
-        return True
+        sql = "SELECT status FROM clients WHERE client_id = ?"
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (client_id,))
+                result = cursor.fetchone()
+                if result:
+                    return result[0] == 'ONLINE'
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
+        return False
+    
+    def create_session(self, controller_id: str, host_id: str):
+        """Tạo session mới"""
+        sql = """
+            INSERT INTO sessions (controller_client_id, host_client_id, status, started_at)
+            VALUES (?, ?, 'ACTIVE', ?)
+        """
+        now = datetime.datetime.now().isoformat()
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (controller_id, host_id, now))
+                self.__conn.commit()
+                logger.info(f"Created new session between controller {controller_id} and host {host_id}")
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
 
     def close(self):
         if self.__conn:
             self.__conn.close()
 
 
-db = Database()
+_db_instance = None
+
+
+def get_db_instance():
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = Database()
+    return _db_instance

@@ -22,7 +22,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--client":
 
 elif len(sys.argv) > 1 and sys.argv[1] == "--server":
     from common.database import db
-    from server.listener import Listener
+    from server.server import Server
 
     listener = None
     try:

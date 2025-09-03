@@ -77,9 +77,10 @@ class RequestConnectionPacket(BasePacket):
     Yêu cầu kết nối từ controller -> host
     """
 
-    def __init__(self, target_id: str):
+    def __init__(self, target_id: str, my_id: str):
         super().__init__(PacketType.REQUEST_CONNECTION)
         self.target_id = target_id
+        self.my_id = my_id
 
     def __repr__(self):
         return f"RequestConnectionPacket(type={self.packet_type}, target_id={self.target_id})"
