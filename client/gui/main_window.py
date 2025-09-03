@@ -16,6 +16,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from client.auth.auth_manager import AuthManager
 from client.network.network_client import NetworkClient
+from client.auth.auth_manager import AuthManager
+from client.network.network_client import NetworkClient
 from common.logger import logger
 from common.packet import RequestConnectionPacket
 from common.enum import PacketType
@@ -79,9 +81,11 @@ class MainWindow(QMainWindow):
         )
 
         # Central widget with tabs
+        # Central widget with tabs
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
+        # Create tabs
         # Create tabs
         self.create_host_tab()
         self.create_controller_tab()
@@ -133,8 +137,13 @@ class MainWindow(QMainWindow):
             """
             QLabel {
                 font-size: 28px;
+                font-size: 28px;
                 font-weight: bold;
                 color: #0066cc;
+                background-color: #f8f9fa;
+                border: 2px dashed #0066cc;
+                border-radius: 8px;
+                padding: 15px;
                 background-color: #f8f9fa;
                 border: 2px dashed #0066cc;
                 border-radius: 8px;
@@ -174,8 +183,13 @@ class MainWindow(QMainWindow):
             """
             QLabel {
                 font-size: 22px;
+                font-size: 22px;
                 font-weight: bold;
                 color: #009900;
+                background-color: #f8fff8;
+                border: 2px dashed #009900;
+                border-radius: 8px;
+                padding: 12px;
                 background-color: #f8fff8;
                 border: 2px dashed #009900;
                 border-radius: 8px;
@@ -187,6 +201,7 @@ class MainWindow(QMainWindow):
         pass_layout.addWidget(self.password_display)
         layout.addWidget(pass_group)
 
+        # Action buttons
         # Action buttons
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -230,6 +245,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(host_widget, "🏠 Your ID")
+        self.tabs.addTab(host_widget, "🏠 Your ID")
 
     def create_controller_tab(self):
         """Tab kết nối đến partner"""
@@ -266,7 +282,9 @@ class MainWindow(QMainWindow):
         connect_layout.setSpacing(15)
 
         # Partner ID Input
+        # Partner ID Input
         self.partner_id_input = QLineEdit()
+        self.partner_id_input.setPlaceholderText("Enter 9-digit Partner ID")
         self.partner_id_input.setPlaceholderText("Enter 9-digit Partner ID")
         self.partner_id_input.setMaxLength(9)
         self.partner_id_input.setStyleSheet(
@@ -285,11 +303,15 @@ class MainWindow(QMainWindow):
         connect_layout.addRow("Partner ID:", self.partner_id_input)
 
         # Password Input
+        # Password Input
         self.partner_pass_input = QLineEdit()
         self.partner_pass_input.setPlaceholderText("Enter Password")
         self.partner_pass_input.setEchoMode(QLineEdit.Password)
         self.partner_pass_input.setStyleSheet(self.partner_id_input.styleSheet())
+        self.partner_pass_input.setStyleSheet(self.partner_id_input.styleSheet())
         connect_layout.addRow("Password:", self.partner_pass_input)
+
+        layout.addWidget(connect_group)
 
         layout.addWidget(connect_group)
 
@@ -319,6 +341,7 @@ class MainWindow(QMainWindow):
         """
         )
         self.connect_btn.clicked.connect(self.connect_to_partner)
+        layout.addWidget(self.connect_btn)
         layout.addWidget(self.connect_btn)
 
         layout.addStretch()
@@ -416,6 +439,7 @@ class MainWindow(QMainWindow):
         partner_id = self.partner_id_input.text().strip()
         password = self.partner_pass_input.text().strip()
 
+        # Validation
         # Validation
         if not partner_id or not password:
             QMessageBox.warning(
