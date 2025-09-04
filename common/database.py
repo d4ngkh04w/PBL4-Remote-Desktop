@@ -9,8 +9,7 @@ class Database:
         self.__db_path = __db_path
         self.__conn = None
         try:
-            self.__conn = sqlite3.connect(
-                self.__db_path, check_same_thread=False)
+            self.__conn = sqlite3.connect(self.__db_path, check_same_thread=False)
             self.__conn.row_factory = sqlite3.Row
             logger.info(f"Successfully connected to database")
             self._create_tables()
@@ -23,106 +22,106 @@ class Database:
             cursor.execute("PRAGMA foreign_keys = ON;")
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS clients (
-                    client_id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL CHECK(status IN ('ONLINE', 'IN_SESSION_HOST', 'IN_SESSION_CONTROLLER')),
-                    ip_address TEXT,
-                    connected_at TEXT NOT NULL
+                CREATE TABLE IF NOT EXISTS connection_logs (
+                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id TEXT NOT NULL,
+                    ip_address TEXT NOT NULL,
+                    event TEXT NOT NULL CHECK (event IN ('CONNECTED', 'DISCONNECTED')),
+                    connected_at INTEGER NOT NULL,
+                    disconnected_at INTEGER
                 );
                 """
             )
 
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS sessions (
+                CREATE TABLE IF NOT EXISTS session_logs (
                     session_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    controller_client_id TEXT NOT NULL,
-                    host_client_id TEXT NOT NULL,
-                    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'ENDED', 'FAILED_AUTH')),
-                    started_at TEXT NOT NULL,
-                    ended_at TEXT,
-                    FOREIGN KEY (controller_client_id) REFERENCES clients (client_id),
-                    FOREIGN KEY (host_client_id) REFERENCES clients (client_id)
+                    controller_id TEXT NOT NULL,  -- client_id của máy điều khiển
+                    host_id TEXT NOT NULL,  -- client_id của máy bị điều khiển
+                    status TEXT NOT NULL CHECK (
+                        status IN ('ACTIVE', 'ENDED', 'FAILED_AUTH')
+                    ),
+                    started_at INTEGER NOT NULL,
+                    ended_at INTEGER
                 );
                 """
             )
 
-    def add_client(self, client_id: str, ip_address: str):
-        """Thêm một client mới vào DB khi họ kết nối"""
+    def add_connection_log(self, client_id: str, ip_address: str):
+        """Thêm một bản ghi kết nối vào DB"""
         sql = """
-            INSERT INTO clients (client_id, status, ip_address, connected_at)
-            VALUES (?, 'ONLINE', ?, ?)
+            INSERT INTO connection_logs (client_id, ip_address, event, connected_at)
+            VALUES (?, ?, 'CONNECTED', ?)
         """
-        now = datetime.datetime.now().isoformat()
+        now = int(datetime.datetime.now().timestamp())
         try:
             if self.__conn:
                 cursor = self.__conn.cursor()
                 cursor.execute(sql, (client_id, ip_address, now))
                 self.__conn.commit()
-                logger.info(f"Added new client {client_id} to database")
+                logger.info(f"Added connection log for client {client_id}")
         except sqlite3.Error as e:
             logger.error(f"Database error: {e}")
             raise e
 
-    def remove_client(self, client_id: str):
-        """Xóa một client khỏi DB khi họ ngắt kết nối"""
-        sql = "DELETE FROM clients WHERE client_id = ?"
-        try:
-            if self.__conn:
-                cursor = self.__conn.cursor()
-                cursor.execute(sql, (client_id,))
-                self.__conn.commit()
-                logger.info(f"Removed client {client_id} from database")
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            raise e
-
-    def update_client_status(self, client_id: str, new_status: str):
-        """Cập nhật trạng thái của một client trong DB"""
-        valid_statuses = ['ONLINE', 'IN_SESSION_HOST', 'IN_SESSION_CONTROLLER']
-        if new_status not in valid_statuses:
-            raise ValueError(f"Invalid status: {new_status}. Valid statuses are: {valid_statuses}")
-
-        sql = "UPDATE clients SET status = ? WHERE client_id = ?"
-        try:
-            if self.__conn:
-                cursor = self.__conn.cursor()
-                cursor.execute(sql, (new_status, client_id))
-                self.__conn.commit()
-                logger.info(f"Updated client {client_id} status to {new_status}")
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            raise e
-
-    def is_client_online(self, client_id: str) -> bool:
-        """Kiểm tra xem một client có đang trực tuyến hay không"""
-        sql = "SELECT status FROM clients WHERE client_id = ?"
-        try:
-            if self.__conn:
-                cursor = self.__conn.cursor()
-                cursor.execute(sql, (client_id,))
-                result = cursor.fetchone()
-                if result:
-                    return result[0] == 'ONLINE'
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            raise e
-        return False
-    
-    def create_session(self, controller_id: str, host_id: str):
-        """Tạo session mới"""
+    def update_connection_disconnected(self, client_id: str):
+        """Cập nhật thời gian ngắt kết nối"""
         sql = """
-            INSERT INTO sessions (controller_client_id, host_client_id, status, started_at)
-            VALUES (?, ?, 'ACTIVE', ?)
+            UPDATE connection_logs
+            SET event = 'DISCONNECTED', disconnected_at = ?
+            WHERE log_id = (
+                SELECT log_id
+                FROM connection_logs
+                WHERE client_id = ? AND event = 'CONNECTED'
+                ORDER BY log_id DESC
+                LIMIT 1
+            )
         """
-        now = datetime.datetime.now().isoformat()
+        now = int(datetime.datetime.now().timestamp())
         try:
             if self.__conn:
                 cursor = self.__conn.cursor()
-                cursor.execute(sql, (controller_id, host_id, now))
+                cursor.execute(sql, (now, client_id))
                 self.__conn.commit()
-                logger.info(f"Created new session between controller {controller_id} and host {host_id}")
-                return cursor.lastrowid
+                logger.info(f"Updated connection log for client {client_id}")
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
+
+    def add_session_log(self, controller_id: str, host_id: str, status: str):
+        """Thêm một bản ghi phiên vào DB"""
+        sql = """
+            INSERT INTO session_logs (controller_id, host_id, status, started_at)
+            VALUES (?, ?, ?, ?)
+        """
+        now = int(datetime.datetime.now().timestamp())
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (controller_id, host_id, status, now))
+                self.__conn.commit()
+                logger.info(
+                    f"Added session log for controller {controller_id} and host {host_id}"
+                )
+        except sqlite3.Error as e:
+            logger.error(f"Database error: {e}")
+            raise e
+
+    def end_session_log(self, session_id: int, status: str):
+        """Kết thúc một phiên làm việc"""
+        sql = """
+            UPDATE session_logs
+            SET status = ?, ended_at = ?
+            WHERE session_id = ?
+        """
+        now = int(datetime.datetime.now().timestamp())
+        try:
+            if self.__conn:
+                cursor = self.__conn.cursor()
+                cursor.execute(sql, (status, now, session_id))
+                self.__conn.commit()
+                logger.info(f"Ended session {session_id} with status {status}")
         except sqlite3.Error as e:
             logger.error(f"Database error: {e}")
             raise e

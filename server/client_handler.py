@@ -1,130 +1,124 @@
+import socket
+import ssl
 from common.protocol import Protocol
-from common.packet import *
+from common.packet import (
+    Packet,
+    RequestConnectionPacket,
+    RequestPasswordPacket,
+    SendPasswordPacket,
+    ResponseConnectionPacket,
+)
 from common.logger import logger
-from common.database import get_db_instance
-from common.enum import PacketType
+from server.client_manager import ClientManager
+
 
 class ClientHandler:
-    active_clients = {}
-    def __init__(self, client_socket, client_id, client_addr):
-        self.client_socket = client_socket
-        self.client_id = client_id
-        self.client_addr = client_addr
-        self.db = get_db_instance()
-        self.is_active = True
-        self.session_manager = None
-        #Lưu vào memory cache
-        ClientHandler.active_clients[client_id] = self     
+    __client_manager = ClientManager()
 
     @classmethod
-    def get_client_socket(cls, client_id):
-        client_handler = cls.active_clients.get(client_id)
-        if client_handler and client_handler.is_active:
-            return client_handler.client_socket
-        return None
-    @classmethod
-    def get_client_handler(cls, client_id):
-        """Lấy handler của client"""
-        return cls.active_clients.get(client_id)
-
-    def handle(self):
+    def handle(
+        cls,
+        client_socket: socket.socket | ssl.SSLSocket,
+        client_id: str,
+        client_addr: str,
+    ):
         """Main handler loop cho client"""
         try:
-            # Thêm client vào db
-            self.db.add_client(self.client_id, self.client_addr[0])
-            logger.info(f"Client {self.client_id} connected from {self.client_addr}")
+            cls.__client_manager.add_client(client_socket, client_id, client_addr)
+            logger.info(f"Client {client_id} connected from {client_addr}")
 
-            while self.is_active:
-                packet = Protocol.receive_packet(self.client_socket)
-                if not packet:                    
+            while True:
+                packet = Protocol.receive_packet(client_socket)
+                if not packet:
                     break
-                self._process_packet(packet)
+                cls.__relay_packet(packet, client_id)
 
         except Exception as e:
-            logger.error(f"Error handling client {self.client_id}: {e}")
+            logger.error(f"Error handling client {client_id}: {e}")
         finally:
-            self._cleanup()
+            client_socket.close()
+            cls.__client_manager.remove_client(client_id)
+            logger.info(f"Client {client_id} disconnected from {client_addr}")
 
-    def _process_packet(self, packet):
-        """Xử lí các loại packet khác nhau"""  
-        if packet.type == PacketType.REQUEST_CONNECTION:
-            self._handle_request_connection(packet)
-        elif packet.type == PacketType.REQUEST_PASSWORD:
-            self._handle_request_password(packet)
-        elif packet.type == PacketType.SEND_PASSWORD:
-            self._handle_send_password(packet)       
-        else:
-            logger.warning(f"Unknown packet type from client {self.client_id}: {packet.type}")
+    @classmethod
+    def __relay_packet(
+        cls,
+        packet: Packet,
+        client_id: str,
+    ):
+        """Chuyển tiếp gói tin đến client đích"""
+        match packet:
+            case RequestConnectionPacket():
+                cls.__relay_request_connection(packet, client_id)
+            case RequestPasswordPacket():
+                cls.__relay_request_password(packet, client_id)
+            case SendPasswordPacket():
+                cls.__relay_send_password(packet, client_id)
+            case _:
+                logger.warning(
+                    f"Unknown packet type from client {client_id}: {packet.__class__.__name__}"
+                )
 
-    def _handle_request_connection(self, packet: RequestConnectionPacket):
-        """Xử lí REQUEST_CONNECTION"""
-        logger.info(f"Client {self.client_id} requests connection to {packet.target_id}")
-
-        # Kiểm tra target_id có online không
-        if not self.db.is_client_online(packet.target_id):
+    @classmethod
+    def __relay_request_connection(
+        cls,
+        packet: RequestConnectionPacket,
+        client_id: str,
+    ):
+        """Chuyển tiếp RequestConnectionPacket"""
+        logger.info(f"Client {client_id} requests connection to {packet.target_id}")
+        # Kiểm tra trạng thái online của client đích
+        if not cls.__client_manager.is_client_online(packet.target_id):
             response = ResponseConnectionPacket(
-                success=False,
-                message=f"Target client {packet.target_id} is not online"
+                success=False, message=f"Target client {packet.target_id} is not online"
             )
-            Protocol.send_packet(self.client_socket, response)
-            logger.info(f"Client {self.client_id} connection to {packet.target_id} failed: target offline")
-            return
-
-        # lấy socket từ memory cache
-        target_socket = ClientHandler.get_client_socket(packet.target_id)
-        if target_socket:
-            Protocol.send_packet(target_socket, packet)
-            logger.info(f"Client {self.client_id} connection request sent to {packet.target_id}")
+            socket = cls.__client_manager.get_client_socket(client_id)
+            if socket:
+                Protocol.send_packet(socket, response)
+                logger.info(
+                    f"Client {client_id} connection to {packet.target_id} failed: Target offline"
+                )
         else:
-            logger.warning(f"Client {self.client_id} connection request failed: target offline")
-            response = ResponseConnectionPacket(
-                success=False,
-                message=f"Target client {packet.target_id} is not online"
-            )
-            Protocol.send_packet(self.client_socket, response)
+            target_socket = cls.__client_manager.get_client_socket(packet.target_id)
+            if target_socket:
+                Protocol.send_packet(target_socket, packet)
+                logger.info(
+                    f"Client {client_id} connection request sent to {packet.target_id}"
+                )
 
-    def _handle_request_password(self, packet: RequestPasswordPacket):
-        """Xử lí REQUEST_PASSWORD - Host yêu cầu password từ controller"""
-        logger.info(f"Host {self.client_id} requests password from controller")
+    @classmethod
+    def __relay_request_password(cls, packet: RequestPasswordPacket, client_id: str):
+        """Chuyển tiếp RequestPasswordPacket - Host yêu cầu password từ controller"""
+        logger.info(f"Host {client_id} requests password from controller")
         # Gửi yêu cầu mật khẩu đến controller
-        controller_socket = ClientHandler.get_client_socket(packet.controller_id)
+        controller_socket = cls.__client_manager.get_client_socket(packet.controller_id)
         if controller_socket:
             Protocol.send_packet(controller_socket, packet)
             logger.info(f"Password request sent to controller {packet.controller_id}")
         else:
             logger.warning(f"Controller {packet.controller_id} not found")
-        # Gửi response lỗi về host
-        response = ResponseConnectionPacket(
-            success=False,
-            message="Controller not available"
-        )
-        Protocol.send_packet(self.client_socket, response)
-    def _handle_send_password(self, packet: SendPasswordPacket):
-        """Xử lí SEND_PASSWORD - Controller gửi password đến host"""
-        logger.info(f"Client {self.client_id} sends password")
-        
-        # Forward password đến host
-        target_socket = ClientHandler.get_client_socket(packet.target_id)
-        if target_socket:
-            Protocol.send_packet(target_socket, packet)
-            logger.info(f"Password sent to host {packet.target_id}")
-        else:
             response = ResponseConnectionPacket(
-                success=False,
-                message=f"Target host {packet.target_id} is not online"
+                success=False, message="Controller not available"
             )
-            Protocol.send_packet(self.client_socket, response)
+            host_socket = cls.__client_manager.get_client_socket(client_id)
+            if host_socket:
+                Protocol.send_packet(host_socket, response)
 
-    def _cleanup(self):
-        """Cleanup khi client disconnect"""
-        try:
-            self.db.remove_client(self.client_id)
-            self.client_socket.close()
-            
-            # Xóa khỏi memory cache
-            if self.client_id in ClientHandler.active_clients:
-                del ClientHandler.active_clients[self.client_id]
-                
-            logger.info(f"Client {self.client_id} disconnected")
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+    @classmethod
+    def __relay_send_password(cls, packet: SendPasswordPacket, client_id: str):
+        """Chuyển tiếp SendPasswordPacket - Controller gửi password đến host"""
+        logger.info(f"Client {client_id} sends password")
+
+        # Forward password đến host
+        host_socket = cls.__client_manager.get_client_socket(packet.host_id)
+        if host_socket:
+            Protocol.send_packet(host_socket, packet)
+            logger.info(f"Password sent to host {packet.host_id}")
+        else:
+            logger.warning(f"Host {packet.host_id} not found")
+            response = ResponseConnectionPacket(
+                success=False, message=f"Target host {packet.host_id} is not online"
+            )
+            controller_socket = cls.__client_manager.get_client_socket(client_id)
+            if controller_socket:
+                Protocol.send_packet(controller_socket, response)

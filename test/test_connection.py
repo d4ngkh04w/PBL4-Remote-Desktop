@@ -21,13 +21,13 @@ if len(sys.argv) > 1 and sys.argv[1] == "--client":
             client_instance.disconnect()
 
 elif len(sys.argv) > 1 and sys.argv[1] == "--server":
-    from common.database import db
+    from common.database import get_db_instance
     from server.server import Server
 
     listener = None
     try:
         logger.info("Starting server...")
-        listener = Listener()
+        listener = Server()
         listener.start()
         logger.info("Server started successfully")
     except KeyboardInterrupt:

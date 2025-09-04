@@ -8,6 +8,7 @@ from common.packet import AssignIdPacket
 from common.protocol import Protocol
 from common.utils import generate_numeric_id, format_numeric_id
 from common.database import get_db_instance
+from server.client_handler import ClientHandler
 
 
 class Server:
@@ -38,15 +39,15 @@ class Server:
                 self.socket.settimeout(0.5)
                 try:
                     client_socket, addr = self.socket.accept()
-                    logger.info(f"Accepted connection from {addr}")
-
                     id = format_numeric_id(generate_numeric_id(9))
                     packet = AssignIdPacket(client_id=id)
                     Protocol.send_packet(client_socket, packet)
                     logger.debug(f"Sent packet: {packet}")
 
                     client_handler = threading.Thread(
-                        target=self.handle_client, args=(client_socket,)
+                        target=ClientHandler.handle,
+                        args=(client_socket, id, addr),
+                        daemon=True,
                     )
                     client_handler.start()
                 except socket.timeout:
@@ -84,6 +85,3 @@ class Server:
                 logger.warning("No packet received")
         except Exception as e:
             logger.error(f"Error receiving packet: {e}")
-
-    def handle_client(self, client_socket):
-        pass

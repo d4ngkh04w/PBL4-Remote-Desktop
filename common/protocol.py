@@ -31,24 +31,28 @@ class Protocol:
     @classmethod
     def send_packet(
         cls,
-        sock: Union[socket.socket, ssl.SSLSocket],
+        socket: Union[socket.socket, ssl.SSLSocket],
         packet: Packet,
     ) -> None:
         """
         Gửi gói tin
+
+        :param socket: Gói tin được gửi đến socket này
         """
         payload = pickle.dumps(packet)
         compressed_payload = lz4.compress(payload)
         length = len(compressed_payload)
         header = struct.pack(cls._HEADER_FORMAT, length, packet.packet_type.value)
-        sock.sendall(header + compressed_payload)
+        socket.sendall(header + compressed_payload)
 
     @classmethod
-    def receive_packet(cls, sock: Union[socket.socket, ssl.SSLSocket]) -> Packet:
+    def receive_packet(cls, socket: Union[socket.socket, ssl.SSLSocket]) -> Packet:
         """
         Nhận gói tin
+
+        :param socket: Socket nhận gói tin
         """
-        header = cls._receive(sock, cls._HEADER_SIZE)
+        header = cls._receive(socket, cls._HEADER_SIZE)
 
         length, packet_type = struct.unpack(cls._HEADER_FORMAT, header)
 
@@ -69,7 +73,7 @@ class Protocol:
         if packet_type not in valid_packet_types:
             raise ValueError(f"Invalid packet type: {packet_type}")
 
-        compressed_payload = cls._receive(sock, length)
+        compressed_payload = cls._receive(socket, length)
         if len(compressed_payload) == 0:
             raise ValueError("No compressed payload data")
 

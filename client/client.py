@@ -1,5 +1,4 @@
 import sys
-from timeit import main
 
 from PyQt5.QtWidgets import QApplication
 
