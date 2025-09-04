@@ -10,11 +10,17 @@ class PasswordManager:
     """
 
     @staticmethod
-    def generate_password(length: int = 8) -> str:
+    def generate_password(
+        length: int = 8, ascii: bool = True, digits: bool = True
+    ) -> str:
         """
         Tạo một mật khẩu ngẫu nhiên với độ dài cho trước.
         """
-        characters = string.ascii_letters + string.digits
+        characters = ""
+        if ascii:
+            characters += string.ascii_letters
+        if digits:
+            characters += string.digits
         password = "".join(secrets.choice(characters) for _ in range(length))
         return password
 

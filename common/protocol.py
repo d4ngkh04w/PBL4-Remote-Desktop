@@ -67,6 +67,7 @@ class Protocol:
             PacketType.REQUEST_CONNECTION.value,
             PacketType.AUTHENTICATION_RESPONSE.value,
             PacketType.AUTHENTICATION_REQUEST.value,
+            PacketType.AUTHENTICATION_RESULT.value,
             PacketType.RESPONSE_CONNECTION.value,
         }
 

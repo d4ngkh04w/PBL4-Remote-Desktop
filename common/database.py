@@ -36,7 +36,8 @@ class Database:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS session_logs (
-                    session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
                     controller_id TEXT NOT NULL,  -- client_id của máy điều khiển
                     host_id TEXT NOT NULL,  -- client_id của máy bị điều khiển
                     status TEXT NOT NULL CHECK (
@@ -89,17 +90,17 @@ class Database:
             logger.error(f"Database error: {e}")
             raise e
 
-    def add_session_log(self, controller_id: str, host_id: str, status: str):
+    def add_session_log(self, session_id: str, controller_id: str, host_id: str):
         """Thêm một bản ghi phiên vào DB"""
         sql = """
-            INSERT INTO session_logs (controller_id, host_id, status, started_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO session_logs (session_id, controller_id, host_id, status, started_at)
+            VALUES (?, ?, ?, 'ACTIVE', ?)
         """
         now = int(datetime.datetime.now().timestamp())
         try:
             if self.__conn:
                 cursor = self.__conn.cursor()
-                cursor.execute(sql, (controller_id, host_id, status, now))
+                cursor.execute(sql, (session_id, controller_id, host_id, now))
                 self.__conn.commit()
                 logger.info(
                     f"Added session log for controller {controller_id} and host {host_id}"
@@ -108,7 +109,7 @@ class Database:
             logger.error(f"Database error: {e}")
             raise e
 
-    def end_session_log(self, session_id: int, status: str):
+    def end_session_log(self, session_id: str, status: str):
         """Kết thúc một phiên làm việc"""
         sql = """
             UPDATE session_logs

@@ -88,9 +88,9 @@ class RequestConnectionPacket(BasePacket):
 
 class ResponseConnectionPacket(BasePacket):
     """
-    Phản hồi kết nối từ host -> controller\n
+    Phản hồi kết nối\n
     Ví dụ:\n
-        {"success": true, "message": "OK"}
+        {"success": true, "message": "Host is ready"}
         {"success": false, "message": "Host rejected connection"}
         {"success": false, "message": "Host not found"}
         {"success": false, "message": "Invalid password"}
@@ -132,6 +132,21 @@ class RequestPasswordPacket(BasePacket):
         return f"RequestPasswordPacket(type={self.packet_type}, controller_id={self.controller_id})"
 
 
+class AuthenticationResultPacket(BasePacket):
+    """
+    Gói tin kết quả xác thực
+    """
+
+    def __init__(self, controller_id: str, success: bool, message: str):
+        super().__init__(PacketType.AUTHENTICATION_RESULT)
+        self.controller_id = controller_id
+        self.success = success
+        self.message = message
+
+    def __repr__(self):
+        return f"AuthenticationResultPacket(type={self.packet_type}, success={self.success}, message={self.message})"
+
+
 Packet = Union[
     ImagePacket,
     KeyBoardPacket,
@@ -140,5 +155,6 @@ Packet = Union[
     SendPasswordPacket,
     RequestConnectionPacket,
     ResponseConnectionPacket,
+    AuthenticationResultPacket,
     RequestPasswordPacket,
 ]

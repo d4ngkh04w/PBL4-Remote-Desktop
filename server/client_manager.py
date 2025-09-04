@@ -19,13 +19,26 @@ class ClientManager:
             "ip": client_ip,
             "status": "ONLINE",
         }
-        cls.__db.add_connection_log(client_id, client_ip[0] + ":" + str(client_ip[1]))
+        try:
+            cls.__db.add_connection_log(
+                client_id, client_ip[0] + ":" + str(client_ip[1])
+            )
+        except Exception:
+            pass
 
     @classmethod
     def remove_client(cls, client_id: str) -> None:
         if client_id in cls.__active_clients:
             del cls.__active_clients[client_id]
-            cls.__db.update_connection_disconnected(client_id)
+            try:
+                cls.__db.update_connection_disconnected(client_id)
+            except Exception:
+                pass
+
+    @classmethod
+    def update_client_status(cls, client_id: str, status: str) -> None:
+        if client_id in cls.__active_clients:
+            cls.__active_clients[client_id]["status"] = status
 
     @classmethod
     def get_client_info(cls, client_id: str):

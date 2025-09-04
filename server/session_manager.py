@@ -1,65 +1,89 @@
-# from common.database import get_db_instance
-# from common.logger import logger
+from common.logger import logger
+from common.database import get_db_instance
+from common.utils import generate_numeric_id, format_numeric_id
+from server.client_manager import ClientManager
 
-# class SessionManager:
-#     def __init__(self):
-#         self.db = get_db_instance()
-#         self.active_sessions = {}  # key: session_id, value: session_info
 
-#     def create_session(self, controller_id: str, host_id: str):
-#         """Tạo session mới"""
-#         try:
-#             if not self.db.is_client_online(controller_id):
-#                 raise ValueError(f"Controller {controller_id} is not online")
-#             if not self.db.is_client_online(host_id):
-#                 raise ValueError(f"Host {host_id} is not online")
+class SessionManager:
+    __db = get_db_instance()
+    __active_session: dict[str, dict[str, str]] = {}
 
-#             # Tạo session mới
-#             session_id = self.db.create_session(controller_id, host_id)
+    @classmethod
+    def create_session(cls, controller_id: str, host_id: str):
+        """Tạo session mới"""
+        try:
+            if not ClientManager.is_client_online(controller_id):
+                raise ValueError(f"Controller {controller_id} is not online")
+            if not ClientManager.is_client_online(host_id):
+                raise ValueError(f"Host {host_id} is not online")
 
-#             # Cập nhật status clients
-#             self.db.update_client_status(controller_id, 'IN_SESSION_CONTROLLER')
-#             self.db.update_client_status(host_id, 'IN_SESSION_HOST')
+            session_id = format_numeric_id(generate_numeric_id(9)).replace(" ", "-")
+            cls.__db.add_session_log(session_id, controller_id, host_id)
 
-#             # Lưu session vào memory
-#             self.active_sessions[session_id] = {
-#                 'controller_id': controller_id,
-#                 'host_id': host_id,
-#                 'status': 'ACTIVE'
-#             }
+            ClientManager.update_client_status(controller_id, "IN_SESSION")
+            ClientManager.update_client_status(host_id, "IN_SESSION")
 
-#             logger.info(f"Session {session_id} created between controller {controller_id} and host {host_id}")
-#             return session_id, "Session created successfully"
-#         except Exception as e:
-#             logger.error(f"Failed to create session: {e}")
-#             raise e
+            cls.__active_session[session_id] = {
+                "controller_id": controller_id,
+                "host_id": host_id,
+                "status": "ACTIVE",
+            }
 
-#     def end_session(self, session_id):
-#         """Kết thúc session"""
-#         try:
-#             if session_id in self.active_sessions:
-#                 session_info = self.active_sessions[session_id]
+            logger.info(
+                f"Session {session_id} created between controller {controller_id} and host {host_id}"
+            )
 
-#                 # Cập nhật status clients về ONLINE
-#                 self.db.update_client_status(session_info['controller_id'], 'ONLINE')
-#                 self.db.update_client_status(session_info['host_id'], 'ONLINE')
+            return session_id
 
-#                 # Xoá session khỏi memory
-#                 del self.active_sessions[session_id]
+        except Exception as e:
+            logger.error(f"Failed to create session: {e}")
+            raise e
 
-#                 logger.info(f"Session {session_id} ended")
-#                 return True
-#         except Exception as e:
-#             logger.error(f"Failed to end session {session_id}: {e}")
-#             return False
+    @classmethod
+    def end_session(cls, session_id: str):
+        """Kết thúc session"""
+        try:
+            if session_id in cls.__active_session:
+                session_info = cls.__active_session[session_id]
 
-#     def get_session_info(self, session_id):
-#         """Lấy thông tin session"""
-#         return self.active_sessions.get(session_id)
+                ClientManager.update_client_status(
+                    session_info["controller_id"], "ONLINE"
+                )
+                ClientManager.update_client_status(session_info["host_id"], "ONLINE")
 
-#     def is_client_in_session(self, client_id):
-#         """Kiểm tra xem client có đang trong session không"""
-#         for session in self.active_sessions.values():
-#             if session['controller_id'] == client_id or session['host_id'] == client_id:
-#                 return True
-#         return False
+                cls.__db.end_session_log(session_id, "ENDED")
+
+                del cls.__active_session[session_id]
+
+                logger.info(f"Session {session_id} ended")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to end session {session_id}: {e}")
+            return False
+
+    @classmethod
+    def get_session_info(cls, session_id: str):
+        """Lấy thông tin session"""
+        return cls.__active_session.get(session_id)
+
+    @classmethod
+    def get_client_sessions(
+        cls, client_id: str
+    ) -> tuple[str, dict[str, str]] | tuple[None, None]:
+        """Lấy session của một client"""
+        return next(
+            (
+                (session_id, info)
+                for session_id, info in cls.__active_session.items()
+                if info["controller_id"] == client_id or info["host_id"] == client_id
+            ),
+            (None, None),
+        )
+
+    @classmethod
+    def is_client_in_session(cls, client_id: str) -> bool:
+        """Kiểm tra xem client có đang trong session không"""
+        for session in cls.__active_session.values():
+            if session["controller_id"] == client_id or session["host_id"] == client_id:
+                return True
+        return False
