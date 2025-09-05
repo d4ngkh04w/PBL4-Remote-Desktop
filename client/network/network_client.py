@@ -13,6 +13,7 @@ from common.packet import (
     RequestConnectionPacket,
     RequestPasswordPacket,
     SendPasswordPacket,
+    AuthenticationResultPacket,
 )
 from common.protocol import Protocol
 from typing import Callable, Optional, Any
@@ -60,7 +61,8 @@ class NetworkClient:
             MousePacket,
             RequestConnectionPacket,
             RequestPasswordPacket,
-            SendPasswordPacket,
+            AuthenticationResultPacket,
+            SendPasswordPacket,            
         ],
     ):
         """Gửi packet đến server"""

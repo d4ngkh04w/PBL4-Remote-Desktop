@@ -30,3 +30,10 @@ def format_numeric_id(numeric_id: str) -> str:
         temp_id = temp_id[:-3]
 
     return " ".join(parts)
+
+def unformat_numeric_id(formatted_id: str) -> str:
+    """
+    Bỏ định dạng ID số.
+    Ví dụ: "123 456 789" -> "123456789"
+    """
+    return formatted_id.replace(" ", "")

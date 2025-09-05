@@ -77,13 +77,13 @@ class RequestConnectionPacket(BasePacket):
     Yêu cầu kết nối từ controller -> host
     """
 
-    def __init__(self, target_id: str, my_id: str):
+    def __init__(self, host_id: str, controller_id: str):
         super().__init__(PacketType.REQUEST_CONNECTION)
-        self.target_id = target_id
-        self.my_id = my_id
+        self.host_id = host_id
+        self.controller_id = controller_id
 
     def __repr__(self):
-        return f"RequestConnectionPacket(type={self.packet_type}, target_id={self.target_id})"
+        return f"RequestConnectionPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id})"
 
 
 class ResponseConnectionPacket(BasePacket):
@@ -110,13 +110,14 @@ class SendPasswordPacket(BasePacket):
     Phản hồi password lại cho máy host
     """
 
-    def __init__(self, host_id: str, password: str):
+    def __init__(self, host_id: str, controller_id: str, password: str):
         super().__init__(PacketType.AUTHENTICATION_RESPONSE)
         self.host_id = host_id
+        self.controller_id = controller_id
         self.password = password
 
     def __repr__(self):
-        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id})"
+        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id})"
 
 
 class RequestPasswordPacket(BasePacket):
@@ -124,9 +125,10 @@ class RequestPasswordPacket(BasePacket):
     Yêu cầu xác thực password từ host
     """
 
-    def __init__(self, controller_id: str):
+    def __init__(self, controller_id: str, host_id:str):
         super().__init__(PacketType.AUTHENTICATION_REQUEST)
         self.controller_id = controller_id
+        self.host_id = host_id
 
     def __repr__(self):
         return f"RequestPasswordPacket(type={self.packet_type}, controller_id={self.controller_id})"

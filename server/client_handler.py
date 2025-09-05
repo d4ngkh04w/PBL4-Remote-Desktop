@@ -73,24 +73,24 @@ class ClientHandler:
         controller_id: str,
     ):
         """Chuyển tiếp RequestConnectionPacket"""
-        logger.info(f"Client {controller_id} requests connection to {packet.target_id}")
+        logger.info(f"Client {controller_id} requests connection to {packet.host_id}")
         # Kiểm tra trạng thái online của client đích
-        if not ClientManager.is_client_online(packet.target_id):
+        if not ClientManager.is_client_online(packet.host_id):
             response = ResponseConnectionPacket(
-                success=False, message=f"Target client {packet.target_id} is not online"
+                success=False, message=f"Target client {packet.host_id} is not online"
             )
             socket = ClientManager.get_client_socket(controller_id)
             if socket:
                 Protocol.send_packet(socket, response)
                 logger.info(
-                    f"Client {controller_id} connection to {packet.target_id} failed: Target offline"
+                    f"Client {controller_id} connection to {packet.host_id} failed: Target offline"
                 )
         else:
-            target_socket = ClientManager.get_client_socket(packet.target_id)
+            target_socket = ClientManager.get_client_socket(packet.host_id)
             if target_socket:
                 Protocol.send_packet(target_socket, packet)
                 logger.info(
-                    f"Client {controller_id} connection request sent to {packet.target_id}"
+                    f"Client {controller_id} connection request sent to {packet.host_id}"
                 )
 
     @classmethod

@@ -6,7 +6,7 @@ from common.config import SecurityConfig, ServerConfig
 from common.logger import logger
 from common.packet import AssignIdPacket
 from common.protocol import Protocol
-from common.utils import generate_numeric_id, format_numeric_id
+from common.utils import generate_numeric_id
 from common.database import get_db_instance
 from server.client_handler import ClientHandler
 
@@ -39,7 +39,7 @@ class Server:
                 self.socket.settimeout(0.5)
                 try:
                     client_socket, addr = self.socket.accept()
-                    id = format_numeric_id(generate_numeric_id(9))
+                    id = generate_numeric_id(9)
                     packet = AssignIdPacket(client_id=id)
                     Protocol.send_packet(client_socket, packet)
                     logger.debug(f"Sent packet: {packet}")

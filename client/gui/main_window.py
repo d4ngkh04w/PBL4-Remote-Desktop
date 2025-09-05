@@ -1,32 +1,23 @@
 from PyQt5.QtWidgets import (
-    QMainWindow,
-    QTabWidget,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QFormLayout,
-    QLabel,
-    QPushButton,
-    QGroupBox,
-    QLineEdit,
-    QMessageBox,
-    QStatusBar,
-    QApplication,
+    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QLabel, QPushButton, QGroupBox, QLineEdit, QMessageBox, QStatusBar, QApplication
 )
 from PyQt5.QtCore import Qt
 from client.auth.auth_manager import AuthManager
 from client.network.network_client import NetworkClient
-from client.auth.auth_manager import AuthManager
-from client.network.network_client import NetworkClient
 from common.logger import logger
-from common.packet import RequestConnectionPacket
-from common.enum import PacketType
+from common.packet import (
+    Packet, RequestConnectionPacket, RequestPasswordPacket, SendPasswordPacket,
+    AuthenticationResultPacket, ImagePacket, AssignIdPacket
+)
+
 from common.password_manager import PasswordManager
+from common.utils import unformat_numeric_id, format_numeric_id
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__()
+        super().__init__()        
 
         # Initialize components
         self.network_client = NetworkClient()
@@ -36,7 +27,7 @@ class MainWindow(QMainWindow):
         # Generate password tự động khi khởi tạo
         self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
         self.my_id = None
-
+            
         # Track cleanup state to avoid double cleanup
         self._cleanup_done = False
 
@@ -44,8 +35,8 @@ class MainWindow(QMainWindow):
         self.id_display = None
         self.password_display = None
         self.connect_btn = None
-        self.partner_id_input = None
-        self.partner_pass_input = None
+        self.host_id_input = None
+        self.host_pass_input = None
 
         # Setup
         self.init_ui()
@@ -204,8 +195,7 @@ class MainWindow(QMainWindow):
         pass_layout.addWidget(self.password_display)
         layout.addWidget(pass_group)
 
-        # Action buttons
-        # Action buttons
+        # Action buttons        
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
@@ -248,7 +238,6 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(host_widget, "🏠 Your ID")
-        self.tabs.addTab(host_widget, "🏠 Your ID")
 
     def create_controller_tab(self):
         """Tab kết nối đến partner"""
@@ -284,13 +273,11 @@ class MainWindow(QMainWindow):
         connect_layout = QFormLayout(connect_group)
         connect_layout.setSpacing(15)
 
-        # Partner ID Input
-        # Partner ID Input
-        self.partner_id_input = QLineEdit()
-        self.partner_id_input.setPlaceholderText("Enter 9-digit Partner ID")
-        self.partner_id_input.setPlaceholderText("Enter 9-digit Partner ID")
-        self.partner_id_input.setMaxLength(9)
-        self.partner_id_input.setStyleSheet(
+        # Partner ID Input       
+        self.host_id_input = QLineEdit()
+        self.host_id_input.setPlaceholderText("Enter 9-digit Partner ID")        
+        self.host_id_input.setMaxLength(9)
+        self.host_id_input.setStyleSheet(
             """
             QLineEdit {
                 padding: 10px;
@@ -303,18 +290,14 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        connect_layout.addRow("Partner ID:", self.partner_id_input)
+        connect_layout.addRow("Partner ID:", self.host_id_input)
 
-        # Password Input
-        # Password Input
-        self.partner_pass_input = QLineEdit()
-        self.partner_pass_input.setPlaceholderText("Enter Password")
-        self.partner_pass_input.setEchoMode(QLineEdit.Password)
-        self.partner_pass_input.setStyleSheet(self.partner_id_input.styleSheet())
-        self.partner_pass_input.setStyleSheet(self.partner_id_input.styleSheet())
-        connect_layout.addRow("Password:", self.partner_pass_input)
-
-        layout.addWidget(connect_group)
+        # Password Input        
+        self.host_pass_input = QLineEdit()
+        self.host_pass_input.setPlaceholderText("Enter Password")
+        self.host_pass_input.setEchoMode(QLineEdit.Password)
+        self.host_pass_input.setStyleSheet(self.host_id_input.styleSheet())       
+        connect_layout.addRow("Password:", self.host_pass_input)
 
         layout.addWidget(connect_group)
 
@@ -343,33 +326,26 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        self.connect_btn.clicked.connect(self.connect_to_partner)
-        layout.addWidget(self.connect_btn)
+        self.connect_btn.clicked.connect(self.connect_to_host)
         layout.addWidget(self.connect_btn)
 
         layout.addStretch()
-        self.tabs.addTab(controller_widget, "🎮 Control Partner")
+        self.tabs.addTab(controller_widget, "🎮 Control Host")
 
     def setup_connections(self):
         """Thiết lập kết nối signals"""
         self.network_client.on_message_received = self.handle_server_message
 
         # Enable Enter key for connection
-        if self.partner_pass_input is not None:
-            self.partner_pass_input.returnPressed.connect(self.connect_to_partner)
-        else:
-            logger.warning(
-                "partner_pass_input is None, cannot connect returnPressed signal"
-            )
+        if self.host_pass_input is not None:
+            self.host_pass_input.returnPressed.connect(self.connect_to_host)
 
     def connect_to_server(self):
         """Kết nối đến server để nhận ID"""
         try:
             if self.network_client.connect():
                 if hasattr(self, "status_bar") and self.status_bar:
-                    self.status_bar.showMessage(
-                        "Connected to server, waiting for ID..."
-                    )
+                    self.status_bar.showMessage("Connected to server, waiting for ID...")
                 logger.info("Connected to server, waiting for ID assignment")
             else:
                 if hasattr(self, "status_bar") and self.status_bar:
@@ -406,94 +382,141 @@ class MainWindow(QMainWindow):
         ):
             self.password_display.setText(self.my_password)
 
-    def handle_server_message(self, packet):
-        """Xử lý tin nhắn từ server"""
-        try:
-            if packet.packet_type == PacketType.ASSIGN_ID:
+    def handle_server_message(self, packet: Packet):
+        """Xử lý tin nhắn từ server"""       
+        match packet:
+            case AssignIdPacket():
                 self.handle_assign_id(packet)
-            elif packet.packet_type == PacketType.AUTHENTICATION_RESPONSE:
+            case AuthenticationResultPacket():
                 self.handle_authentication_response(packet)
-            elif packet.packet_type == PacketType.IMAGE:
+            case RequestConnectionPacket():
+                self.handle_request_connection(packet)
+            case RequestPasswordPacket():
+                self.handle_request_password(packet)
+            case SendPasswordPacket():
+                self.handle_send_password(packet)
+            case ImagePacket(data):
                 if self.remote_widget:
-                    self.remote_widget.handle_image_packet(packet)
-            else:
-                logger.warning(f"Unknown packet type: {packet.packet_type}")
-        except Exception as e:
-            logger.error(f"Error handling server message: {e}")
+                    self.remote_widget.handle_image_packet(data)
+            case _:
+                logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
 
-    def handle_assign_id(self, packet):
+    def handle_assign_id(self, packet: AssignIdPacket):
         """Xử lý phản hồi ID từ server"""
         if hasattr(packet, "client_id"):
-            if hasattr(self, "id_display") and self.id_display:
-                self.id_display.setText(packet.client_id)
-            if hasattr(self, "status_bar") and self.status_bar:
+            if self.id_display:
+                self.id_display.setText(format_numeric_id(packet.client_id))
+            if self.status_bar:
                 self.status_bar.showMessage("Ready - ID received from server")
-            if hasattr(self, "my_id"):
-                self.my_id = packet.client_id
+            self.my_id = packet.client_id
             logger.info(f"Received ID: {packet.client_id}")
             # Enable controller tab when connected
             self.tabs.setTabEnabled(1, True)
 
-    def handle_authentication_response(self, packet):
+    def handle_authentication_response(self, packet: AuthenticationResultPacket):
         """Xử lý phản hồi kết nối từ server"""
-        if hasattr(packet, "success") and packet.success:
+        if packet.success:
             self.on_connection_successful()
         else:
-            error_msg = getattr(packet, "error_message", "Connection failed")
+            error_msg = packet.message if packet.message else "Connection failed"
             self.show_connection_failed(error_msg)
 
-    def connect_to_partner(self):
-        """Kết nối đến partner"""
-        partner_id = self.partner_id_input.text().strip()
-        password = self.partner_pass_input.text().strip()
+    def connect_to_host(self):
+        """Kết nối đến host"""
+        host_id = self.host_id_input.text().strip()
+        password = self.host_pass_input.text().strip()
 
         # Validation
-        # Validation
-        if not partner_id or not password:
-            QMessageBox.warning(
-                self, "Input Error", "Please enter both Partner ID and Password"
-            )
+        if not host_id or not password:
+            QMessageBox.warning(self, "Input Error", "Please enter both Host ID and Password")
+            return
+        if len(host_id) != 9 or not host_id.isdigit():
+            QMessageBox.warning(self, "Invalid ID", "Host ID must be exactly 9 digits")
             return
 
-        if len(partner_id) != 9 or not partner_id.isdigit():
-            QMessageBox.warning(
-                self, "Invalid ID", "Partner ID must be exactly 9 digits"
-            )
-            return
 
         # Disable button during connection
         self.connect_btn.setEnabled(False)
         self.connect_btn.setText("🔄 Connecting...")
 
         try:
-            connect_packet = RequestConnectionPacket(partner_id, self.my_id)
+            connect_packet = RequestConnectionPacket(host_id, self.my_id)
             self.network_client.send(connect_packet)
-            self.status_bar.showMessage(f"Connecting to Partner ID: {partner_id}")
-            logger.info(f"Connection request sent for partner: {partner_id}")
+            self.status_bar.showMessage(f"Connecting to Host ID: {host_id}")
+            logger.info(f"Connection request sent for host: {host_id}")
         except Exception as e:
             logger.error(f"Error sending connect request: {e}")
             self.reset_connect_button()
-            QMessageBox.critical(
-                self, "Connection Error", f"Failed to send connection request: {str(e)}"
+            QMessageBox.critical(self, "Connection Error", f"Failed to send connection request: {str(e)}")
+    def handle_request_connection(self, packet: RequestConnectionPacket):
+        """Xử lý yêu cầu kết nối từ host"""
+        if hasattr(packet, "controller_id") and hasattr(packet, "host_id"):
+            host_id = packet.host_id
+            controller_id = packet.controller_id            
+            logger.info(f"Received connection request from: {controller_id}")
+            # Hiển thị hộp thoại chấp nhận hoặc từ chối kết nối
+            reply = QMessageBox.question(
+                self,
+                "Connection Request",
+                f"Host with ID {format_numeric_id(controller_id)} wants to connect. Accept?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
+            if reply == QMessageBox.Yes:
+                # Gửi yêu cầu xác thực
+                accept_connection_packet = RequestPasswordPacket(controller_id, host_id)
+                self.network_client.send(accept_connection_packet)
+                logger.info(f"Connection accepted for host: {controller_id}")
+            else:
+                # Gửi phản hồi từ chối kết nối
+                auth_packet = AuthenticationResultPacket(controller_id,False, "Connection refused by user")
+                self.network_client.send(auth_packet)
+                logger.info(f"Connection refused by user for host: {controller_id}")
+    def handle_request_password(self, packet: RequestPasswordPacket):
+        """Xử lý yêu cầu password từ host"""
+        if hasattr(packet, "host_id") and hasattr(packet, "controller_id"):            
+            host_id = packet.host_id
+            controller_id = packet.controller_id
+            logger.info(f"Received password request from: {host_id}")
+            # Gửi password hiện tại cho host
+            entered_password = self.host_pass_input.text().strip()
+            logger.info(f"Entered password: {entered_password}")
+            password_packet = SendPasswordPacket(host_id,controller_id, entered_password)
+            self.network_client.send(password_packet)
+            logger.info(f"Sent password: {entered_password} to host: {host_id}")
 
+    def handle_send_password(self, packet: SendPasswordPacket):
+        """Xử lý nhận password từ host"""
+        if hasattr(packet, "password") and hasattr(packet,"controller_id"):
+            received_password = packet.password
+            controller_id = packet.controller_id
+            logger.info(f"Received password from host: {received_password}")
+            # Xác thực password
+            if received_password == self.my_password:
+                auth_result_packet = AuthenticationResultPacket(controller_id,True, "Authentication successful")
+                self.network_client.send(auth_result_packet)
+                logger.info("Password correct, authentication successful")
+            else:
+                auth_result_packet = AuthenticationResultPacket(controller_id,False, "Incorrect password")
+                self.network_client.send(auth_result_packet)
+                logger.info("Password incorrect, authentication failed")
     def on_connection_successful(self):
         """Xử lý khi kết nối thành công"""
         try:
-            from client.gui.remote_widget import RemoteWidget
+            # from client.gui.remote_widget import RemoteWidget
 
-            # Create RemoteWidget
-            self.remote_widget = RemoteWidget(self.network_client)
+            # # Create RemoteWidget
+            # self.remote_widget = RemoteWidget(self.network_client)
 
-            # Add remote desktop tab
-            tab_index = self.tabs.addTab(self.remote_widget, "🖥️ Remote Desktop")
-            self.tabs.setCurrentIndex(tab_index)
+            # # Add remote desktop tab
+            # tab_index = self.tabs.addTab(self.remote_widget, "🖥️ Remote Desktop")
+            # self.tabs.setCurrentIndex(tab_index)
 
-            # Update UI
-            self.connect_btn.setText("🔌 Disconnect")
-            self.connect_btn.clicked.disconnect()
-            self.connect_btn.clicked.connect(self.disconnect_from_partner)
-            self.connect_btn.setEnabled(True)
+            # # Update UI
+            # self.connect_btn.setText("🔌 Disconnect")
+            # self.connect_btn.clicked.disconnect()
+            # self.connect_btn.clicked.connect(self.disconnect_from_partner)
+            # self.connect_btn.setEnabled(True)
 
             self.statusBar().showMessage("✅ Connected - Remote desktop active")
             logger.info("Remote desktop connection established")
@@ -532,36 +555,30 @@ class MainWindow(QMainWindow):
         self.connect_btn.setText("🔗 Connect to Partner")
         self.connect_btn.setEnabled(True)
         self.connect_btn.clicked.disconnect()
-        self.connect_btn.clicked.connect(self.connect_to_partner)
+        self.connect_btn.clicked.connect(self.connect_to_host)
 
     def refresh_password(self):
         """Làm mới password"""
         self.my_password = PasswordManager.generate_password(6)
-        if hasattr(self, "password_display") and self.password_display:
+        if self.password_display:
             self.password_display.setText(self.my_password)
-        if hasattr(self, "status_bar") and self.status_bar:
+        if self.status_bar:
             self.status_bar.showMessage("Password refreshed", 2000)
         logger.info("Password refreshed")
 
     def copy_id(self):
         """Copy ID to clipboard"""
-        if (
-            hasattr(self, "id_display")
-            and self.id_display
-            and self.id_display.text()
-            and self.id_display.text() != "Connecting..."
-        ):
+        if self.id_display and self.id_display.text() and self.id_display.text() != "Connecting...":
             clipboard = QApplication.clipboard()
-            clipboard.setText(self.id_display.text())
-            if hasattr(self, "status_bar") and self.status_bar:
+            clipboard.setText(unformat_numeric_id(self.id_display.text()))
+            if self.status_bar:
                 self.status_bar.showMessage("ID copied to clipboard", 2000)
 
     def copy_password(self):
         """Copy password to clipboard"""
         clipboard = QApplication.clipboard()
-        if hasattr(clipboard, "setText"):
-            clipboard.setText(self.my_password)
-        if hasattr(self, "status_bar") and self.status_bar:
+        clipboard.setText(self.my_password)
+        if self.status_bar:
             self.status_bar.showMessage("Password copied to clipboard", 2000)
 
     def cleanup(self):
@@ -595,28 +612,3 @@ class MainWindow(QMainWindow):
         super().closeEvent(a0)
 
 
-if __name__ == "__main__":
-    import sys
-    import signal
-
-    app = QApplication(sys.argv)
-    window = MainWindow()
-
-    # Đảm bảo cleanup khi nhận signal terminate
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, cleaning up...")
-        window.cleanup()
-        app.quit()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    window.show()
-
-    try:
-        exit_code = app.exec_()
-    finally:
-        # Đảm bảo cleanup được gọi dù có lỗi gì
-        window.cleanup()
-
-    sys.exit(exit_code)
