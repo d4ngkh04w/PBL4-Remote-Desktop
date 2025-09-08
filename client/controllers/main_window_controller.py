@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QObject, pyqtSignal
 from common.logger import logger
 from common.packet import (
     Packet, RequestConnectionPacket, RequestPasswordPacket, SendPasswordPacket,
@@ -8,13 +9,18 @@ from common.password_manager import PasswordManager
 from common.utils import unformat_numeric_id, format_numeric_id
 
 
-class MainWindowController:
+class MainWindowController(QObject):
     """
     Controller xử lý logic business cho MainWindow.
     Tách biệt hoàn toàn khỏi UI để dễ test và maintain.
     """
 
+    # Signals để giao tiếp với main thread
+    connection_request_received = pyqtSignal(
+        str, str)  # controller_id, host_id
+
     def __init__(self, main_window, network_client, auth_manager):
+        super().__init__()
         self.main_window = main_window
         self.network_client = network_client
         self.auth_manager = auth_manager
@@ -22,7 +28,10 @@ class MainWindowController:
         # Setup network message handler
         self.network_client.on_message_received = self.handle_server_message
 
-    # ====== SERVER CONNECTION ======
+        # Connect signal to slot in main thread
+        self.connection_request_received.connect(
+            self.show_connection_request_dialog)    # ====== SERVER CONNECTION ======
+
     def connect_to_server(self):
         """Kết nối đến server để nhận ID"""
         try:
@@ -105,29 +114,38 @@ class MainWindowController:
             controller_id = packet.controller_id
             logger.info(f"Received connection request from: {controller_id}")
 
-            # Hiển thị hộp thoại chấp nhận hoặc từ chối kết nối
-            reply = QMessageBox.question(
-                self.main_window,
-                "Connection Request",
-                f"Controller with ID {format_numeric_id(controller_id)} wants to connect. Accept?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
+            # Emit signal để main thread hiển thị dialog
+            self.connection_request_received.emit(
+                str(controller_id), str(host_id))
 
-            if reply == QMessageBox.Yes:
-                # Gửi yêu cầu xác thực
-                accept_connection_packet = RequestPasswordPacket(
-                    controller_id, host_id)
-                self.network_client.send(accept_connection_packet)
-                logger.info(
-                    f"Connection accepted for controller: {controller_id}")
-            else:
-                # Gửi phản hồi từ chối kết nối
-                auth_packet = AuthenticationResultPacket(
-                    controller_id, False, "Connection refused by user")
-                self.network_client.send(auth_packet)
-                logger.info(
-                    f"Connection refused by user for controller: {controller_id}")
+    def show_connection_request_dialog(self, controller_id_str, host_id_str):
+        """Hiển thị dialog trong main thread"""
+        controller_id = controller_id_str
+        host_id = host_id_str
+
+        # Hiển thị hộp thoại chấp nhận hoặc từ chối kết nối
+        reply = QMessageBox.question(
+            self.main_window,
+            "Connection Request",
+            f"Controller with ID {format_numeric_id(controller_id)} wants to connect. Accept?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply == QMessageBox.Yes:
+            # Gửi yêu cầu xác thực
+            accept_connection_packet = RequestPasswordPacket(
+                controller_id, host_id)
+            self.network_client.send(accept_connection_packet)
+            logger.info(
+                f"Connection accepted for controller: {controller_id}")
+        else:
+            # Gửi phản hồi từ chối kết nối
+            auth_packet = AuthenticationResultPacket(
+                controller_id, False, "Connection refused by user")
+            self.network_client.send(auth_packet)
+            logger.info(
+                f"Connection refused by user for controller: {controller_id}")
 
     def handle_host_receive_password(self, packet: SendPasswordPacket):
         """Host: Nhận và xác thực password từ controller"""
