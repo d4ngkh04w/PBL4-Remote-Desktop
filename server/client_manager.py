@@ -1,11 +1,9 @@
-from common.database import get_db_instance
 import socket
 import ssl
 
 
 class ClientManager:
     __active_clients: dict[str, dict[str, str | socket.socket | ssl.SSLSocket]] = {}
-    __db = get_db_instance()
 
     @classmethod
     def add_client(
@@ -19,21 +17,11 @@ class ClientManager:
             "ip": client_ip,
             "status": "ONLINE",
         }
-        try:
-            cls.__db.add_connection_log(
-                client_id, client_ip[0] + ":" + str(client_ip[1])
-            )
-        except Exception:
-            pass
 
     @classmethod
     def remove_client(cls, client_id: str) -> None:
         if client_id in cls.__active_clients:
             del cls.__active_clients[client_id]
-            try:
-                cls.__db.update_connection_disconnected(client_id)
-            except Exception:
-                pass
 
     @classmethod
     def update_client_status(cls, client_id: str, status: str) -> None:

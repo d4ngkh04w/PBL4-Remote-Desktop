@@ -1,6 +1,16 @@
 from PyQt5.QtWidgets import (
-    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QPushButton, QGroupBox, QLineEdit, QStatusBar, QApplication
+    QMainWindow,
+    QTabWidget,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QLabel,
+    QPushButton,
+    QGroupBox,
+    QLineEdit,
+    QStatusBar,
+    QApplication,
 )
 from PyQt5.QtCore import Qt
 from client.auth.auth_manager import AuthManager
@@ -11,17 +21,18 @@ from common.utils import unformat_numeric_id
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, server_host, server_port, use_ssl, cert_file):
         super().__init__()
 
         # Initialize components
-        self.network_client = NetworkClient()
+        self.network_client = NetworkClient(
+            server_host, server_port, use_ssl, cert_file
+        )
         self.auth_manager = AuthManager(self.network_client)
         self.remote_widget = None
 
         # Generate password tự động khi khởi tạo
-        self.my_password = PasswordManager.generate_password(
-            6)  # 6 ký tự cho dễ nhớ
+        self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
         self.my_id = None
 
         # Track cleanup state to avoid double cleanup
@@ -36,7 +47,8 @@ class MainWindow(QMainWindow):
 
         # Initialize controller for business logic
         self.controller = MainWindowController(
-            self, self.network_client, self.auth_manager)
+            self, self.network_client, self.auth_manager
+        )
 
         # Setup
         self.init_ui()
@@ -350,7 +362,11 @@ class MainWindow(QMainWindow):
 
     def copy_id(self):
         """UI Event: Copy ID to clipboard"""
-        if self.id_display and self.id_display.text() and self.id_display.text() != "Connecting...":
+        if (
+            self.id_display
+            and self.id_display.text()
+            and self.id_display.text() != "Connecting..."
+        ):
             clipboard = QApplication.clipboard()
             clipboard.setText(unformat_numeric_id(self.id_display.text()))
             if self.status_bar:

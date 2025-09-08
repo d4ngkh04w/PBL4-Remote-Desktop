@@ -3,7 +3,6 @@ Pillow>=11.3.0
 pynput>=1.8.1
 lz4>=4.4.4
 bcrypt>=4.3.0
-asyncio>=4.0.0
 python-dotenv>=1.1.1
 psutil>=7.0.0
 numpy>=2.3.2

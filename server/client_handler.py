@@ -1,5 +1,6 @@
 import socket
 import ssl
+import logging
 
 from common.protocol import Protocol
 from common.packet import (
@@ -11,9 +12,11 @@ from common.packet import (
     AuthenticationResultPacket,
     ImagePacket,
 )
-from common.logger import logger
+
 from server.client_manager import ClientManager
 from server.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
 
 
 class ClientHandler:
@@ -40,6 +43,9 @@ class ClientHandler:
             pass
         finally:
             client_socket.close()
+            session_id, _ = SessionManager.get_client_sessions(client_id)
+            if session_id:
+                SessionManager.end_session(session_id)
             ClientManager.remove_client(client_id)
             logger.info(f"Client {client_id} disconnected from {client_addr}")
 
@@ -82,26 +88,26 @@ class ClientHandler:
             socket = ClientManager.get_client_socket(controller_id)
             if socket:
                 Protocol.send_packet(socket, response)
-                logger.info(
+                logger.debug(
                     f"Client {controller_id} connection to {packet.host_id} failed: Target offline"
                 )
         else:
             target_socket = ClientManager.get_client_socket(packet.host_id)
             if target_socket:
                 Protocol.send_packet(target_socket, packet)
-                logger.info(
+                logger.debug(
                     f"Client {controller_id} connection request sent to {packet.host_id}"
                 )
 
     @classmethod
     def __relay_request_password(cls, packet: RequestPasswordPacket, host_id: str):
         """Chuyển tiếp RequestPasswordPacket - Host yêu cầu password từ controller"""
-        logger.info(f"Host {host_id} requests password from controller")
+        logger.debug(f"Host {host_id} requests password from controller")
         # Gửi yêu cầu mật khẩu đến controller
         controller_socket = ClientManager.get_client_socket(packet.controller_id)
         if controller_socket:
             Protocol.send_packet(controller_socket, packet)
-            logger.info(f"Password request sent to controller {packet.controller_id}")
+            logger.debug(f"Password request sent to controller {packet.controller_id}")
         else:
             logger.warning(f"Controller {packet.controller_id} not found")
             response = ResponseConnectionPacket(
@@ -114,13 +120,13 @@ class ClientHandler:
     @classmethod
     def __relay_send_password(cls, packet: SendPasswordPacket, controller_id: str):
         """Chuyển tiếp SendPasswordPacket - Controller gửi password đến host"""
-        logger.info(f"Client {controller_id} sends password")
+        logger.debug(f"Client {controller_id} sends password")
 
         # Forward password đến host
         host_socket = ClientManager.get_client_socket(packet.host_id)
         if host_socket:
             Protocol.send_packet(host_socket, packet)
-            logger.info(f"Password sent to host {packet.host_id}")
+            logger.debug(f"Password sent to host {packet.host_id}")
         else:
             logger.warning(f"Host {packet.host_id} not found")
             response = ResponseConnectionPacket(
@@ -135,7 +141,7 @@ class ClientHandler:
         cls, packet: AuthenticationResultPacket, host_id: str
     ):
         """Xử lý kết quả xác thực từ host"""
-        logger.info(f"Host {host_id} authentication result: {packet.success}")
+        logger.debug(f"Host {host_id} authentication result: {packet.success}")
 
         if packet.success:
             # Tạo session nếu xác thực thành công
@@ -143,7 +149,7 @@ class ClientHandler:
                 session_id = SessionManager.create_session(
                     packet.controller_id, host_id
                 )
-                logger.info(
+                logger.debug(
                     f"Session {session_id} created for controller {packet.controller_id} and host {host_id}"
                 )
 
@@ -166,7 +172,7 @@ class ClientHandler:
         controller_socket = ClientManager.get_client_socket(packet.controller_id)
         if controller_socket:
             Protocol.send_packet(controller_socket, packet)
-            logger.info(
+            logger.debug(
                 f"Authentication result sent to controller {packet.controller_id}: {packet.success}"
             )
         else:

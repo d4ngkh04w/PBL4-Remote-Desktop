@@ -1,6 +1,8 @@
-from common.logger import logger
-from common.packet import AssignIdPacket
+import logging
+
 from client.network.network_client import NetworkClient
+
+logger = logging.getLogger(__name__)
 
 
 class AuthManager:

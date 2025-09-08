@@ -1,11 +1,12 @@
-from common.logger import logger
-from common.database import get_db_instance
+import logging
+
 from common.utils import generate_numeric_id, format_numeric_id
 from server.client_manager import ClientManager
 
+logger = logging.getLogger(__name__)
+
 
 class SessionManager:
-    __db = get_db_instance()
     __active_session: dict[str, dict[str, str]] = {}
 
     @classmethod
@@ -18,7 +19,6 @@ class SessionManager:
                 raise ValueError(f"Host {host_id} is not online")
 
             session_id = format_numeric_id(generate_numeric_id(9)).replace(" ", "-")
-            cls.__db.add_session_log(session_id, controller_id, host_id)
 
             ClientManager.update_client_status(controller_id, "IN_SESSION")
             ClientManager.update_client_status(host_id, "IN_SESSION")
@@ -29,7 +29,7 @@ class SessionManager:
                 "status": "ACTIVE",
             }
 
-            logger.info(
+            logger.debug(
                 f"Session {session_id} created between controller {controller_id} and host {host_id}"
             )
 
@@ -50,8 +50,6 @@ class SessionManager:
                     session_info["controller_id"], "ONLINE"
                 )
                 ClientManager.update_client_status(session_info["host_id"], "ONLINE")
-
-                cls.__db.end_session_log(session_id, "ENDED")
 
                 del cls.__active_session[session_id]
 

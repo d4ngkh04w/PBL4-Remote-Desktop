@@ -2,10 +2,10 @@ import socket
 import ssl
 import threading
 import time
+import traceback
 from typing import Union
+import logging
 
-from common.config import SecurityConfig, ServerConfig
-from common.logger import logger
 from common.packet import (
     ImagePacket,
     KeyBoardPacket,
@@ -18,37 +18,56 @@ from common.packet import (
 from common.protocol import Protocol
 from typing import Callable, Optional, Any
 
+logger = logging.getLogger(__name__)
+
 
 class NetworkClient:
-    def __init__(
-        self, server_host=ServerConfig.SERVER_HOST, server_port=ServerConfig.SERVER_PORT
-    ):
+    def __init__(self, server_host, server_port, use_ssl, cert_file):
         self.host = server_host
         self.port = server_port
         self.socket = None
+        self.use_ssl = use_ssl
+        self.cert_file = cert_file
         self.running = False
         self.listener_thread = None  # Thread để lắng nghe dữ liệu từ server
+        self._disconnected = False  # Flag to track if already disconnected
 
         # Khóa để đảm bảo thread-safe vì nhiều thread có thể truy cập vào socket cùng lúc
         self._lock = threading.Lock()
         self.on_message_received: Optional[Callable[[Any], None]] = None
 
     def connect(self):
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.load_verify_locations(SecurityConfig.CERT_FILE)
-        context.verify_mode = ssl.CERT_REQUIRED
-        context.check_hostname = False
-
         plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
         try:
-            self.socket = context.wrap_socket(plain_socket, server_hostname=self.host)
+            if self.use_ssl:
+                if not self.cert_file:
+                    raise ValueError("SSL enabled but cert_file not provided")
+
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                context.load_verify_locations(self.cert_file)
+                context.verify_mode = ssl.CERT_REQUIRED
+                context.check_hostname = False
+
+                self.socket = context.wrap_socket(
+                    plain_socket, server_hostname=self.host
+                )
+                logger.info("SSL enabled: using secure connection")
+            else:
+                self.socket = plain_socket
+                logger.info("SSL disabled: using plain TCP connection")
+
             self.socket.settimeout(10)
             self.socket.connect((self.host, self.port))
             self.running = True
+            self._disconnected = False  # Reset disconnected flag on successful connect
             logger.info(f"Connected to server at {self.host}:{self.port}")
 
-            self.listener_thread = threading.Thread(target=self.listener_loop)
+            self.listener_thread = threading.Thread(
+                target=self.listener_loop, daemon=True
+            )
             self.listener_thread.start()
+
         except Exception as e:
             logger.error(f"Failed to connect to server {self.host}:{self.port} - {e}")
             self.disconnect()
@@ -62,7 +81,7 @@ class NetworkClient:
             RequestConnectionPacket,
             RequestPasswordPacket,
             AuthenticationResultPacket,
-            SendPasswordPacket,            
+            SendPasswordPacket,
         ],
     ):
         """Gửi packet đến server"""
@@ -92,17 +111,24 @@ class NetworkClient:
 
             except socket.timeout:
                 continue
-            except Exception as e:
-                logger.error(f"Error receiving data from server - {e}")
+            except Exception:
                 self.disconnect()
 
     def disconnect(self):
         """Ngắt kết nối đến server"""
-        self.running = False
-        if self.socket:
-            self.socket.close()
-            self.socket = None
-            logger.info(f"Disconnected from server {self.host}:{self.port}")
+        with self._lock:
+            if self._disconnected:
+                return
+
+            self.running = False
+            if self.socket:
+                self.socket.close()
+                self.socket = None
+                self._disconnected = True
+                logger.info(f"Disconnected from server {self.host}:{self.port}")
+            else:
+                self._disconnected = True
+
         if (
             self.listener_thread
             and self.listener_thread.is_alive()

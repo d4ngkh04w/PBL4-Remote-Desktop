@@ -1,9 +1,10 @@
 import sys
+import logging
 
 from PyQt5.QtWidgets import QApplication
-
 from client.gui.main_window import MainWindow
-from common.logger import logger
+
+logger = logging.getLogger(__name__)
 
 
 class RemoteDesktopClient:
@@ -11,9 +12,13 @@ class RemoteDesktopClient:
     Client chính của ứng dụng Remote Desktop
     """
 
-    def __init__(self):
+    def __init__(self, server_host, server_port, use_ssl, cert_file):
         self.app = None
         self.main_window = None
+        self.server_host = server_host
+        self.server_port = server_port
+        self.use_ssl = use_ssl
+        self.cert_file = cert_file
 
     def initialize(self):
         """Khởi tạo ứng dụng"""
@@ -24,7 +29,9 @@ class RemoteDesktopClient:
             # Thiết lập thông tin ứng dụng
             self.app.setApplicationName("Remote Desktop Client")
             # Tạo main  window
-            self.main_window = MainWindow()
+            self.main_window = MainWindow(
+                self.server_host, self.server_port, self.use_ssl, self.cert_file
+            )
             logger.info("Client created successfully.")
             return True
         except Exception as e:

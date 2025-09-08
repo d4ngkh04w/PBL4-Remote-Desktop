@@ -1,60 +1,31 @@
-import datetime
-import pathlib
+import logging
 import sys
-
-from common.config import LoggingConfig
-
-
-class Logger:
-    def __init__(self):
-
-        if len(sys.argv) > 1 and sys.argv[1] == "--client":
-            self.__log_file = LoggingConfig.LOG_CLIENT
-        else:
-            self.__log_file = LoggingConfig.LOG_SERVER
-
-        self.__format = "[{level}] [{timestamp}] - {message}\n"
-
-    def __get_timestamp(self):
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    def __write_log(self, level, message, log_to_file=True):
-        if log_to_file:
-            if not pathlib.Path(self.__log_file).parent.exists():
-                pathlib.Path(self.__log_file).parent.mkdir(parents=True)
-
-            try:
-                with open(self.__log_file, "a") as f:
-                    f.write(
-                        self.__format.format(
-                            level=level,
-                            timestamp=self.__get_timestamp(),
-                            message=message,
-                        )
-                    )
-            except Exception as e:
-                print(f"[ERR] [{self.__get_timestamp()}] - Failed to write log: {e}")
-
-        print(
-            self.__format.format(
-                level=level,
-                timestamp=self.__get_timestamp(),
-                message=message,
-            ),
-            end="",
-        )
-
-    def info(self, message, log_to_file=True):
-        self.__write_log("INF", message, log_to_file)
-
-    def warning(self, message, log_to_file=True):
-        self.__write_log("WARN", message, log_to_file)
-
-    def error(self, message, log_to_file=True):
-        self.__write_log("ERR", message, log_to_file)
-
-    def debug(self, message, log_to_file=True):
-        self.__write_log("DBG", message, log_to_file)
+import pathlib
+import datetime
 
 
-logger = Logger()
+def setup_logger(is_client: bool = False, debug: bool = False, log_dir: str = "logs"):
+    log_file = (
+        f"{log_dir}/client_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+        if is_client
+        else f"{log_dir}/server_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+    )
+
+    pathlib.Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+
+    log_format = "[%(levelname)s] [%(asctime)s] - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    log_level = logging.DEBUG if debug else logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        datefmt=date_format,
+        handlers=[
+            logging.FileHandler(log_file, mode="a", encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+    return logging.getLogger(__name__)
