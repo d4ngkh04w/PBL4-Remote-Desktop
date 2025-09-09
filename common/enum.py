@@ -45,6 +45,18 @@ class PacketType(Enum):
     AUTHENTICATION_RESPONSE = 8
     AUTHENTICATION_REQUEST = 9
     AUTHENTICATION_RESULT = 10
-    SEND_PASSWORD = 11
-    CHAT_MESSAGE = 12
-    FILE_TRANSFER = 13
+    SESSION = 11
+    SEND_PASSWORD = 12
+    CHAT_MESSAGE = 13
+    FILE_TRANSFER = 14
+
+
+class SessionAction(Enum):
+    """
+    Enum các hành động trong phiên điều khiển
+    """
+
+    CREATED = 1
+    ENDED = 2
+    ERROR = 3
+    TIMEOUT = 4

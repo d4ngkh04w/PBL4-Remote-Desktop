@@ -6,7 +6,9 @@ import logging
 from common.packet import AssignIdPacket
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
-from server.client_handler import ClientHandler
+from server.client_manager import ClientManager
+from server.session_manager import SessionManager
+from server.relay_handle import RelayHandler
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ class Server:
         self.use_ssl = use_ssl
         self.cert_file = cert_file
         self.key_file = key_file
+        self._stop_called = False
 
     def start(self):
         plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -54,7 +57,7 @@ class Server:
                     logger.debug(f"Sent packet: {packet}")
 
                     client_handler = threading.Thread(
-                        target=ClientHandler.handle,
+                        target=self.handle_client,
                         args=(client_socket, client_id, addr),
                         daemon=True,
                     )
@@ -76,12 +79,21 @@ class Server:
             self.stop()
 
     def stop(self):
+        if self._stop_called:
+            return
+
+        self._stop_called = True
         self.is_listening = False
         if self.socket:
             try:
                 self.socket.close()
             except Exception:
                 pass
+
+        try:
+            RelayHandler.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down RelayHandler: {e}")
 
     def receive(self):
         if not self.socket:
@@ -97,3 +109,31 @@ class Server:
                 logger.warning("No packet received")
         except Exception as e:
             logger.error(f"Error receiving packet: {e}")
+
+    def handle_client(
+        self,
+        client_socket: ssl.SSLSocket | socket.socket,
+        client_id: str,
+        client_addr: str,
+    ):
+        """Main handler loop cho client"""
+        try:
+            ClientManager.add_client(client_socket, client_id, client_addr)
+            logger.info(f"Client {client_id} connected from {client_addr}")
+
+            while True:
+                packet = Protocol.receive_packet(client_socket)
+                if not packet:
+                    break
+
+                RelayHandler.relay_packet(packet, client_id)
+
+        except Exception:
+            pass
+        finally:
+            client_socket.close()
+            session_id, _ = SessionManager.get_client_sessions(client_id)
+            if session_id:
+                SessionManager.end_session(session_id)
+            ClientManager.remove_client(client_id)
+            logger.info(f"Client {client_id} disconnected from {client_addr}")

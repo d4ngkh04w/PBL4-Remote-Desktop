@@ -1,6 +1,12 @@
 from typing import Union
 
-from common.enum import PacketType, KeyBoardEventType, MouseEventType, MouseButton
+from common.enum import (
+    PacketType,
+    KeyBoardEventType,
+    MouseEventType,
+    MouseButton,
+    SessionAction,
+)
 
 
 class BasePacket:
@@ -20,8 +26,9 @@ class ImagePacket(BasePacket):
     Gói tin hình ảnh
     """
 
-    def __init__(self, image_data: bytes):
+    def __init__(self, session_id: str, image_data: bytes):
         super().__init__(PacketType.IMAGE)
+        self.session_id = session_id
         self.image_data = image_data
 
     def __repr__(self):
@@ -33,8 +40,9 @@ class KeyBoardPacket(BasePacket):
     Gói tin bàn phím
     """
 
-    def __init__(self, event_type: KeyBoardEventType, key_code: int):
+    def __init__(self, session_id: str, event_type: KeyBoardEventType, key_code: int):
         super().__init__(PacketType.KEYBOARD)
+        self.session_id = session_id
         self.event_type = event_type
         self.key_code = key_code
 
@@ -48,9 +56,14 @@ class MousePacket(BasePacket):
     """
 
     def __init__(
-        self, event_type: MouseEventType, button: MouseButton, position: tuple[int, int]
+        self,
+        session_id: str,
+        event_type: MouseEventType,
+        button: MouseButton,
+        position: tuple[int, int],
     ):
         super().__init__(PacketType.MOUSE)
+        self.session_id = session_id
         self.event_type = event_type
         self.button = button
         self.position = position
@@ -125,7 +138,7 @@ class RequestPasswordPacket(BasePacket):
     Yêu cầu xác thực password từ host
     """
 
-    def __init__(self, controller_id: str, host_id:str):
+    def __init__(self, controller_id: str, host_id: str):
         super().__init__(PacketType.AUTHENTICATION_REQUEST)
         self.controller_id = controller_id
         self.host_id = host_id
@@ -149,6 +162,20 @@ class AuthenticationResultPacket(BasePacket):
         return f"AuthenticationResultPacket(type={self.packet_type}, success={self.success}, message={self.message})"
 
 
+class SessionPacket(BasePacket):
+    """
+    Gói tin phiên làm việc
+    """
+
+    def __init__(self, session_id: str, action: SessionAction):
+        super().__init__(PacketType.SESSION)
+        self.session_id = session_id
+        self.action = action
+
+    def __repr__(self):
+        return f"SessionPacket(type={self.packet_type}, session_id={self.session_id}, action={self.action})"
+
+
 Packet = Union[
     ImagePacket,
     KeyBoardPacket,
@@ -159,4 +186,5 @@ Packet = Union[
     ResponseConnectionPacket,
     AuthenticationResultPacket,
     RequestPasswordPacket,
+    SessionPacket,
 ]

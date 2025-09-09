@@ -155,7 +155,7 @@ class MainWindowController(QObject):
         if hasattr(packet, "password") and hasattr(packet, "controller_id"):
             received_password = packet.password
             controller_id = unformat_numeric_id(packet.controller_id)
-            logger.info(f"Received password from controller: {received_password}")
+            logger.debug(f"Received password from controller: {received_password}")
 
             # Xác thực password
             if received_password == self.main_window.my_password:
@@ -163,13 +163,13 @@ class MainWindowController(QObject):
                     controller_id, True, "Authentication successful"
                 )
                 self.network_client.send(auth_result_packet)
-                logger.info("Password correct, authentication successful")
+                logger.debug("Password correct, authentication successful")
             else:
                 auth_result_packet = AuthenticationResultPacket(
                     controller_id, False, "Incorrect password"
                 )
                 self.network_client.send(auth_result_packet)
-                logger.info("Password incorrect, authentication failed")
+                logger.debug("Password incorrect, authentication failed")
 
     # ====== CONTROLLER LOGIC ======
     def handle_controller_connect(self, host_id, password):
@@ -215,12 +215,12 @@ class MainWindowController(QObject):
 
             # Gửi password đã nhập
             entered_password = self.main_window.host_pass_input.text().strip()
-            logger.info(f"Entered password: {entered_password}")
+            logger.debug(f"Entered password: {entered_password}")
             password_packet = SendPasswordPacket(
                 host_id, controller_id, entered_password
             )
             self.network_client.send(password_packet)
-            logger.info(f"Sent password: {entered_password} to host: {host_id}")
+            logger.debug(f"Sent password: {entered_password} to host: {host_id}")
 
     def handle_controller_auth_response(self, packet: AuthenticationResultPacket):
         """Controller: Nhận phản hồi xác thực từ host"""
