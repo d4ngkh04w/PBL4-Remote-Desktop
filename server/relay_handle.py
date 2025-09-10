@@ -149,12 +149,21 @@ class RelayHandler:
         if packet.success:
             try:
                 session_id = SessionManager.create_session(
-                    host_id, packet.controller_id
+                    host_id=host_id, controller_id=packet.controller_id
                 )
                 session_packet = SessionPacket(
                     session_id=session_id,
                     action=SessionAction.CREATED,
                 )
+
+                if not RelayHandler._send(packet, packet.controller_id):
+                    logger.warning(f"Controller {packet.controller_id} not found")
+                    response = ResponseConnectionPacket(
+                        success=False, message="Controller not available"
+                    )
+                    RelayHandler._send(response, host_id)
+                    SessionManager.end_session(session_id)
+                    return
 
                 if not RelayHandler._send(session_packet, packet.controller_id):
                     logger.warning(f"Controller {packet.controller_id} not found")
@@ -163,7 +172,7 @@ class RelayHandler:
                         f"Session {session_id} creation notified to controller {packet.controller_id}"
                     )
 
-                if not RelayHandler._send(packet, host_id):
+                if not RelayHandler._send(session_packet, host_id):
                     logger.warning(f"Host {host_id} not found")
                 else:
                     logger.debug(

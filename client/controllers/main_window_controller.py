@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal
 import logging
+from common.utils import capture_screen
 
 from common.packet import (
     Packet,
@@ -10,9 +11,15 @@ from common.packet import (
     AuthenticationResultPacket,
     ImagePacket,
     AssignIdPacket,
+    SessionPacket
 )
 from common.password_manager import PasswordManager
 from common.utils import unformat_numeric_id, format_numeric_id
+from common.enum import SessionAction
+from client.network.network_client import NetworkClient
+import threading
+import time
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +32,28 @@ class MainWindowController(QObject):
 
     # Signals để giao tiếp với main thread
     connection_request_received = pyqtSignal(str, str)  # controller_id, host_id
+    connection_successful = pyqtSignal()  # Kết nối thành công
+    connection_failed = pyqtSignal(str)  # Kết nối thất bại
 
-    def __init__(self, main_window, network_client, auth_manager):
+    def __init__(self, main_window, network_client: NetworkClient):
         super().__init__()
         self.main_window = main_window
         self.network_client = network_client
-        self.auth_manager = auth_manager
+        
+        # Session state
+        self.role = None
+        self.session_active = False
+        self.screen_sharing_thread = None
 
         # Setup network message handler
         self.network_client.on_message_received = self.handle_server_message
 
-        # Connect signal to slot in main thread
+        # Connect signals to slots in main thread
         self.connection_request_received.connect(
             self.show_connection_request_dialog
-        )  # ====== SERVER CONNECTION ======
+        )
+        self.connection_successful.connect(self.on_connection_successful_ui)
+        self.connection_failed.connect(self.show_connection_failed)
 
     def connect_to_server(self):
         """Kết nối đến server để nhận ID"""
@@ -81,6 +96,7 @@ class MainWindowController(QObject):
     # ====== MESSAGE HANDLING ======
     def handle_server_message(self, packet: Packet):
         """Xử lý tin nhắn từ server - phân chia theo loại packet"""
+        logger.debug(f"Received packet: {packet.__class__.__name__}")
         match packet:
             case AssignIdPacket():
                 self.handle_host_assign_id(packet)
@@ -92,9 +108,12 @@ class MainWindowController(QObject):
                 self.handle_controller_password_request(packet)
             case SendPasswordPacket():
                 self.handle_host_receive_password(packet)
+            case SessionPacket():
+                logger.debug(f"Handling SessionPacket: {packet}")
+                self.handle_session_packet(packet)
             case ImagePacket():
-                if self.main_window.remote_widget:
-                    self.main_window.remote_widget.handle_image_packet()
+                if self.main_window.remote_widget and self.role == "controller":
+                    self.main_window.remote_widget.handle_image_packet(packet)
             case _:
                 logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
 
@@ -225,26 +244,114 @@ class MainWindowController(QObject):
     def handle_controller_auth_response(self, packet: AuthenticationResultPacket):
         """Controller: Nhận phản hồi xác thực từ host"""
         if packet.success:
-            self.on_connection_successful()
+            self.role = "controller"
+            self.connection_successful.emit()
         else:
             error_msg = packet.message if packet.message else "Connection failed"
-            self.show_connection_failed(error_msg)
+            # Emit signal thay vì gọi trực tiếp
+            self.connection_failed.emit(error_msg)
+
+    # ====== CONTROLLER/HOST ======
+    def handle_session_packet(self, packet: SessionPacket):
+        """Xử lý gói tin phiên điều khiển"""
+        if packet.action == SessionAction.CREATED:
+            self.network_client.session_id = packet.session_id
+            logger.debug(f"Session created with ID: {packet.session_id}")
+            
+            # Xác định vai trò và bắt đầu session
+            self.start_session()
+            
+            # ✅ Emit connection_successful ở đây thay vì ở auth response
+            self.connection_successful.emit()
+            
+        else:
+            logger.debug(f"Session ended with ID: {packet.session_id}")
+            self.end_session()
+            # Nếu đang ở tab remote desktop, ngắt kết nối
+            if self.main_window.remote_widget:
+                self.disconnect_from_partner()
+    
+    def start_session(self):
+        """Bắt đầu session với vai trò đã xác định"""
+        self.session_active = True
+        
+        # Nếu chưa có role, đây là HOST (không nhận AuthenticationResultPacket)
+        if self.role is None:
+            self.role = "host"
+            logger.info("Role set to HOST (screen sender)")
+
+        logger.info(f"Starting session with role: {self.role}")
+
+        if self.role == "host":
+            # Bắt đầu chụp và gửi màn hình
+            self.start_screen_sharing()
+        elif self.role == "controller":
+            # Chuẩn bị nhận ảnh màn hình
+            logger.info("Ready to receive screen images")
+    
+    def end_session(self):
+        """Kết thúc session"""
+        self.session_active = False
+        self.session_role = None
+        self.network_client.session_id = None
+        
+        # Dừng screen sharing thread nếu có
+        if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
+            logger.info("Stopping screen sharing thread")
+            # Thread sẽ tự dừng khi session_active = False
+    
+    def start_screen_sharing(self):
+        """Bắt đầu chụp và gửi màn hình (HOST role)"""
+        if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
+            return
+            
+        self.screen_sharing_thread = threading.Thread(
+            target=self._screen_sharing_worker,
+            daemon=True,
+            name="ScreenSharing"
+        )
+        self.screen_sharing_thread.start()
+        logger.info("Screen sharing thread started")
+    
+    def _screen_sharing_worker(self):
+        """Worker thread chụp và gửi màn hình"""
+        while self.session_active and self.role == "host":
+            try:
+                # Chụp màn hình
+                img = capture_screen()
+                if img:
+                    # Tạo và gửi ImagePacket
+                    image_packet = ImagePacket(
+                        session_id=self.network_client.session_id,
+                        image_data=img
+                    )
+                    self.network_client.send(image_packet)
+                    logger.debug(f"Sent screen image, size: {len(img)} bytes")
+
+            except Exception as e:
+                logger.error(f"Error capturing/sending screen: {e}")
+                time.sleep(1)  # Đợi trước khi thử lại
 
     # ====== CONNECTION SUCCESS/FAILURE ======
-    def on_connection_successful(self):
-        """Xử lý khi kết nối thành công"""
+    def on_connection_successful_ui(self):
+        """Xử lý khi kết nối thành công - chạy trong main thread"""
         try:
-            # TODO: Uncomment when RemoteWidget is ready
-            # from client.gui.remote_widget import RemoteWidget
-            # self.main_window.remote_widget = RemoteWidget(self.network_client)
-            # tab_index = self.main_window.tabs.addTab(self.main_window.remote_widget, "🖥️ Remote Desktop")
-            # self.main_window.tabs.setCurrentIndex(tab_index)
+            # Import và tạo RemoteWidget trong main thread
+            from client.gui.remote_widget import RemoteWidget
+            self.main_window.remote_widget = RemoteWidget(self.network_client, self.main_window)
+            
+            # Connect disconnect signal từ remote widget
+            self.main_window.remote_widget.disconnect_requested.connect(self.disconnect_from_partner)
+            
+            # Thêm tab mới cho remote desktop
+            tab_index = self.main_window.tabs.addTab(self.main_window.remote_widget, "🖥️ Remote Desktop")
+            self.main_window.tabs.setCurrentIndex(tab_index)
 
             # Update UI
-            # self.main_window.connect_btn.setText("🔌 Disconnect")
-            # self.main_window.connect_btn.clicked.disconnect()
-            # self.main_window.connect_btn.clicked.connect(self.disconnect_from_partner)
-            # self.main_window.connect_btn.setEnabled(True)
+            self.main_window.connect_btn.setText("🔌 Disconnect")
+            self.main_window.connect_btn.clicked.disconnect()
+            self.main_window.connect_btn.clicked.connect(self.disconnect_from_partner)
+            self.main_window.connect_btn.setEnabled(True)
 
             self.main_window.statusBar().showMessage(
                 "✅ Connected - Remote desktop active"

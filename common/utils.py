@@ -1,5 +1,7 @@
 import secrets
-
+import mss
+from PIL import Image
+import io
 
 def generate_numeric_id(num_digits: int = 9) -> str:
     """
@@ -37,3 +39,13 @@ def unformat_numeric_id(formatted_id: str) -> str:
     Ví dụ: "123 456 789" -> "123456789"
     """
     return formatted_id.replace(" ", "")
+
+
+def capture_screen() -> bytes:
+    with mss.mss() as sct:
+        monitor = sct.monitors[1]
+        img = sct.grab(monitor)
+        img_pil = Image.frombytes("RGB", img.size, img.rgb)
+        buffer = io.BytesIO()
+        img_pil.save(buffer, format="JPEG", quality=85)
+        return buffer.getvalue()

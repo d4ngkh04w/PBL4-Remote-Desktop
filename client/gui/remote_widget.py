@@ -1,0 +1,306 @@
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QHBoxLayout, 
+    QPushButton, QGroupBox, QScrollArea, QSizePolicy
+)
+from PyQt5.QtGui import QPixmap, QImage, QFont
+from PyQt5.QtCore import Qt, pyqtSignal
+
+class RemoteWidget(QWidget):
+    # Signals for remote control events
+    disconnect_requested = pyqtSignal()
+    
+    def __init__(self, network_client, parent=None):
+        super().__init__(parent)
+        self.network_client = network_client
+        self.current_pixmap = None
+        
+        self.init_ui()
+        
+    def init_ui(self):
+        """Initialize the remote desktop UI"""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Control toolbar
+        self.create_control_toolbar(main_layout)
+        
+        # Remote screen area
+        self.create_screen_area(main_layout)
+        
+        # Status bar
+        self.create_status_area(main_layout)
+        
+    def create_control_toolbar(self, parent_layout):
+        """Create control toolbar with connection status and actions"""
+        toolbar_group = QGroupBox("Remote Control")
+        toolbar_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #0066cc;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+                background-color: #f8f9fa;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        
+        toolbar_layout = QHBoxLayout(toolbar_group)
+        toolbar_layout.setSpacing(10)
+        
+        # Connection status
+        self.status_label = QLabel("🔗 Connected")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #28a745;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 5px;
+            }
+        """)
+        toolbar_layout.addWidget(self.status_label)
+        
+        # Spacer
+        toolbar_layout.addStretch()
+        
+        # Control buttons
+        self.fit_screen_btn = QPushButton("🔍 Fit to Screen")
+        self.fit_screen_btn.setStyleSheet(self.get_button_style())
+        self.fit_screen_btn.clicked.connect(self.fit_to_screen)
+        toolbar_layout.addWidget(self.fit_screen_btn)
+        
+        self.actual_size_btn = QPushButton("📐 Actual Size")
+        self.actual_size_btn.setStyleSheet(self.get_button_style())
+        self.actual_size_btn.clicked.connect(self.actual_size)
+        toolbar_layout.addWidget(self.actual_size_btn)
+        
+        self.disconnect_btn = QPushButton("❌ Disconnect")
+        self.disconnect_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                padding: 8px 15px;
+                min-height: 25px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+            QPushButton:pressed {
+                background-color: #bd2130;
+            }
+        """)
+        self.disconnect_btn.clicked.connect(self.disconnect_requested.emit)
+        toolbar_layout.addWidget(self.disconnect_btn)
+        
+        parent_layout.addWidget(toolbar_group)
+        
+    def create_screen_area(self, parent_layout):
+        """Create scrollable screen area for remote desktop"""
+        screen_group = QGroupBox("Remote Screen")
+        screen_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #6c757d;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        
+        screen_layout = QVBoxLayout(screen_group)
+        screen_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Scroll area for large screens
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ced4da;
+                background-color: #2c2c2c;
+            }
+        """)
+        
+        # Image label for displaying remote screen
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet("""
+            QLabel {
+                background-color: #2c2c2c;
+                color: #ffffff;
+                font-size: 16px;
+                padding: 20px;
+                border: 2px dashed #6c757d;
+                border-radius: 8px;
+            }
+        """)
+        self.image_label.setText("🖥️ Waiting for remote screen...\n\nThe host will start sharing their screen shortly.")
+        self.image_label.setMinimumSize(800, 600)
+        self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # Enable mouse events on image label
+        self.image_label.setMouseTracking(True)
+        
+        self.scroll_area.setWidget(self.image_label)
+        screen_layout.addWidget(self.scroll_area)
+        
+        parent_layout.addWidget(screen_group)
+        
+    def create_status_area(self, parent_layout):
+        """Create status information area"""
+        status_layout = QHBoxLayout()
+        
+        self.info_label = QLabel("Resolution: Not connected | Quality: High | Latency: -- ms")
+        self.info_label.setStyleSheet("""
+            QLabel {
+                color: #6c757d;
+                font-size: 12px;
+                padding: 5px;
+            }
+        """)
+        status_layout.addWidget(self.info_label)
+        
+        status_layout.addStretch()
+        
+        parent_layout.addLayout(status_layout)
+        
+    def get_button_style(self):
+        """Get standard button style"""
+        return """
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                padding: 8px 15px;
+                min-height: 25px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+            QPushButton:pressed {
+                background-color: #004085;
+            }
+        """
+
+    def handle_image_packet(self, packet):
+        """Handle incoming image packet from remote host"""
+        try:
+            image = QImage.fromData(packet.image_data)
+            if not image.isNull():
+                self.current_pixmap = QPixmap.fromImage(image)
+                self.update_display()
+                
+                # Update status info
+                self.info_label.setText(
+                    f"Resolution: {image.width()}x{image.height()} | "
+                    f"Quality: High | Size: {len(packet.image_data)} bytes"
+                )
+                
+                # Update connection status
+                self.status_label.setText("🔗 Connected - Receiving")
+                self.status_label.setStyleSheet("""
+                    QLabel {
+                        color: #28a745;
+                        font-weight: bold;
+                        font-size: 14px;
+                        padding: 5px;
+                    }
+                """)
+            else:
+                self.show_error("Failed to decode image data")
+        except Exception as e:
+            self.show_error(f"Error handling image: {str(e)}")
+    
+    def update_display(self):
+        """Update the image display based on current view mode"""
+        if not self.current_pixmap:
+            return
+            
+        # Default to fit screen mode
+        self.fit_to_screen()
+    
+    def fit_to_screen(self):
+        """Fit image to screen size"""
+        if not self.current_pixmap:
+            return
+            
+        # Get available size (subtract some padding)
+        available_size = self.scroll_area.size()
+        available_size.setWidth(available_size.width() - 20)
+        available_size.setHeight(available_size.height() - 20)
+        
+        scaled_pixmap = self.current_pixmap.scaled(
+            available_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        
+        self.image_label.setPixmap(scaled_pixmap)
+        self.image_label.resize(scaled_pixmap.size())
+    
+    def actual_size(self):
+        """Show image at actual size"""
+        if not self.current_pixmap:
+            return
+            
+        self.image_label.setPixmap(self.current_pixmap)
+        self.image_label.resize(self.current_pixmap.size())
+    
+    def show_error(self, message):
+        """Show error message"""
+        self.image_label.clear()
+        self.image_label.setText(f"❌ Error: {message}")
+        self.status_label.setText("⚠️ Connection Error")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 5px;
+            }
+        """)
+    
+    def show_waiting(self):
+        """Show waiting state"""
+        self.image_label.clear()
+        self.image_label.setText("🖥️ Waiting for remote screen...\n\nThe host will start sharing their screen shortly.")
+        self.status_label.setText("🔗 Connected - Waiting")
+    
+    def show_disconnected(self):
+        """Show disconnected state"""
+        self.image_label.clear()
+        self.image_label.setText("❌ Disconnected\n\nConnection to remote host has been lost.")
+        self.status_label.setText("❌ Disconnected")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 5px;
+            }
+        """)
+    
+    def resizeEvent(self, event):
+        """Handle widget resize"""
+        super().resizeEvent(event)
+        # Auto-fit when window is resized
+        if self.current_pixmap and self.fit_screen_btn:
+            self.fit_to_screen()
+    
+    def cleanup(self):
+        """Clean up resources when closing"""
+        self.current_pixmap = None
+        if hasattr(self, 'image_label'):
+            self.image_label.clear()

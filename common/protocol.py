@@ -70,6 +70,7 @@ class Protocol:
             PacketType.AUTHENTICATION_RESULT.value,
             PacketType.RESPONSE_CONNECTION.value,
             PacketType.SEND_PASSWORD.value,
+            PacketType.SESSION.value,
         }
 
         if packet_type not in valid_packet_types:

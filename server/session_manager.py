@@ -62,6 +62,7 @@ class SessionManager:
     @classmethod
     def get_session_info(cls, session_id: str):
         """Lấy thông tin session"""
+        logger.debug(f"Getting info for session {cls.__active_session}")
         return cls.__active_session.get(session_id)
 
     @classmethod

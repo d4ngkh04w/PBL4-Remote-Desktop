@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import (
     QApplication,
 )
 from PyQt5.QtCore import Qt
-from client.auth.auth_manager import AuthManager
 from client.network.network_client import NetworkClient
 from client.controllers.main_window_controller import MainWindowController
 from common.password_manager import PasswordManager
@@ -27,8 +26,7 @@ class MainWindow(QMainWindow):
         # Initialize components
         self.network_client = NetworkClient(
             server_host, server_port, use_ssl, cert_file
-        )
-        self.auth_manager = AuthManager(self.network_client)
+        )       
         self.remote_widget = None
 
         # Generate password tự động khi khởi tạo
@@ -47,7 +45,7 @@ class MainWindow(QMainWindow):
 
         # Initialize controller for business logic
         self.controller = MainWindowController(
-            self, self.network_client, self.auth_manager
+            self, self.network_client
         )
 
         # Setup
@@ -339,6 +337,31 @@ class MainWindow(QMainWindow):
         )
         self.connect_btn.clicked.connect(self.connect_to_host)
         layout.addWidget(self.connect_btn)
+        
+        # Test Button - chỉ để test UI RemoteWidget
+        self.test_ui_btn = QPushButton("🎨 Test Remote UI")
+        self.test_ui_btn.setMinimumHeight(40)
+        self.test_ui_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+            QPushButton:pressed {
+                background-color: #117a8b;
+            }
+        """
+        )
+        self.test_ui_btn.clicked.connect(self.test_remote_ui)
+        layout.addWidget(self.test_ui_btn)
 
         layout.addStretch()
         self.tabs.addTab(controller_widget, "🎮 Control Host")
@@ -378,6 +401,40 @@ class MainWindow(QMainWindow):
         clipboard.setText(self.my_password)
         if self.status_bar:
             self.status_bar.showMessage("Password copied to clipboard", 2000)
+
+    def test_remote_ui(self):
+        """Test function: Show RemoteWidget UI without real connection"""
+        try:
+            from client.gui.remote_widget import RemoteWidget
+            
+            # Tạo RemoteWidget với network_client dummy (None) và parent đúng
+            self.remote_widget = RemoteWidget(None, self)
+            
+            # Connect disconnect signal
+            self.remote_widget.disconnect_requested.connect(self.close_test_remote_ui)
+            
+            # Thêm tab mới
+            tab_index = self.tabs.addTab(self.remote_widget, "🎨 Test Remote UI")
+            self.tabs.setCurrentIndex(tab_index)
+            
+            self.status_bar.showMessage("Remote UI test opened", 3000)
+            
+        except Exception as e:
+            self.status_bar.showMessage(f"Error opening test UI: {str(e)}", 5000)
+    
+    def close_test_remote_ui(self):
+        """Close test remote UI"""
+        if hasattr(self, 'remote_widget') and self.remote_widget:
+            # Tìm và remove tab
+            for i in range(self.tabs.count()):
+                if self.tabs.widget(i) == self.remote_widget:
+                    self.tabs.removeTab(i)
+                    break
+            
+            # Cleanup
+            self.remote_widget.cleanup()
+            self.remote_widget = None
+            self.status_bar.showMessage("Test UI closed", 2000)
 
     def cleanup(self):
         """Dọn dẹp tài nguyên"""

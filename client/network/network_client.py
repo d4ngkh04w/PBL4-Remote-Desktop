@@ -28,6 +28,7 @@ class NetworkClient:
         self.socket = None
         self.use_ssl = use_ssl
         self.cert_file = cert_file
+        self.session_id = None
         self.running = False
         self.listener_thread = None  # Thread để lắng nghe dữ liệu từ server
         self._disconnected = False  # Flag to track if already disconnected
@@ -111,7 +112,8 @@ class NetworkClient:
 
             except socket.timeout:
                 continue
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Error receiving data from server - {e}")
                 self.disconnect()
 
     def disconnect(self):
