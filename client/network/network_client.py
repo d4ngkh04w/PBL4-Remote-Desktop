@@ -58,7 +58,7 @@ class NetworkClient:
                 self.socket = plain_socket
                 logger.info("SSL disabled: using plain TCP connection")
 
-            self.socket.settimeout(10)
+            self.socket.settimeout(30)
             self.socket.connect((self.host, self.port))
             self.running = True
             self._disconnected = False  # Reset disconnected flag on successful connect

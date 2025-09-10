@@ -12,13 +12,14 @@ class RemoteDesktopClient:
     Client chính của ứng dụng Remote Desktop
     """
 
-    def __init__(self, server_host, server_port, use_ssl, cert_file):
+    def __init__(self, server_host, server_port, use_ssl, cert_file, fps=30):
         self.app = None
         self.main_window = None
         self.server_host = server_host
         self.server_port = server_port
         self.use_ssl = use_ssl
         self.cert_file = cert_file
+        self.fps = fps
 
     def initialize(self):
         """Khởi tạo ứng dụng"""
@@ -30,7 +31,11 @@ class RemoteDesktopClient:
             self.app.setApplicationName("Remote Desktop Client")
             # Tạo main  window
             self.main_window = MainWindow(
-                self.server_host, self.server_port, self.use_ssl, self.cert_file
+                self.server_host,
+                self.server_port,
+                self.use_ssl,
+                self.cert_file,
+                self.fps,
             )
             logger.info("Client created successfully.")
             return True

@@ -46,6 +46,13 @@ def get_parser():
         metavar="PORT",
         help="Port number (default: 5000)",
     )
+    general.add_argument(
+        "--fps",
+        type=int,
+        default=30,
+        metavar="FPS",
+        help="Screen sharing frame rate (default: 30 FPS)",
+    )
 
     security = parser.add_argument_group("Security Options")
     security.add_argument(

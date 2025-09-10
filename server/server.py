@@ -8,7 +8,7 @@ from common.protocol import Protocol
 from common.utils import generate_numeric_id
 from server.client_manager import ClientManager
 from server.session_manager import SessionManager
-from server.relay_handle import RelayHandler
+from server.relay_handler import RelayHandler
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class Server:
 
         try:
             plain_socket.bind((self.host, self.port))
-            plain_socket.listen(10)
+            plain_socket.listen(5)
             self.is_listening = True
 
             if self.use_ssl:
@@ -64,6 +64,9 @@ class Server:
                     client_handler.start()
 
                 except socket.timeout:
+                    continue
+                except ssl.SSLError as e:
+                    logger.error(f"SSL error accepting client connection: {e}")
                     continue
                 except Exception as e:
                     logger.error(f"Error accepting client connection: {e}")

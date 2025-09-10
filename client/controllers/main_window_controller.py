@@ -2,6 +2,9 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal
 import logging
 from common.utils import capture_screen
+import lz4.frame as lz4
+import threading
+import time
 
 from common.packet import (
     Packet,
@@ -11,14 +14,14 @@ from common.packet import (
     AuthenticationResultPacket,
     ImagePacket,
     AssignIdPacket,
-    SessionPacket
+    SessionPacket,
 )
 from common.password_manager import PasswordManager
 from common.utils import unformat_numeric_id, format_numeric_id
 from common.enum import SessionAction
 from client.network.network_client import NetworkClient
-import threading
-import time
+
+# from client.gui.main_window import MainWindow
 
 
 logger = logging.getLogger(__name__)
@@ -35,11 +38,12 @@ class MainWindowController(QObject):
     connection_successful = pyqtSignal()  # Kết nối thành công
     connection_failed = pyqtSignal(str)  # Kết nối thất bại
 
-    def __init__(self, main_window, network_client: NetworkClient):
+    def __init__(self, main_window, network_client: NetworkClient, fps: int = 30):
         super().__init__()
         self.main_window = main_window
         self.network_client = network_client
-        
+        self.target_fps = fps
+
         # Session state
         self.role = None
         self.session_active = False
@@ -49,9 +53,7 @@ class MainWindowController(QObject):
         self.network_client.on_message_received = self.handle_server_message
 
         # Connect signals to slots in main thread
-        self.connection_request_received.connect(
-            self.show_connection_request_dialog
-        )
+        self.connection_request_received.connect(self.show_connection_request_dialog)
         self.connection_successful.connect(self.on_connection_successful_ui)
         self.connection_failed.connect(self.show_connection_failed)
 
@@ -257,24 +259,24 @@ class MainWindowController(QObject):
         if packet.action == SessionAction.CREATED:
             self.network_client.session_id = packet.session_id
             logger.debug(f"Session created with ID: {packet.session_id}")
-            
+
             # Xác định vai trò và bắt đầu session
             self.start_session()
-            
+
             # ✅ Emit connection_successful ở đây thay vì ở auth response
             self.connection_successful.emit()
-            
+
         else:
             logger.debug(f"Session ended with ID: {packet.session_id}")
             self.end_session()
             # Nếu đang ở tab remote desktop, ngắt kết nối
             if self.main_window.remote_widget:
                 self.disconnect_from_partner()
-    
+
     def start_session(self):
         """Bắt đầu session với vai trò đã xác định"""
         self.session_active = True
-        
+
         # Nếu chưa có role, đây là HOST (không nhận AuthenticationResultPacket)
         if self.role is None:
             self.role = "host"
@@ -288,49 +290,67 @@ class MainWindowController(QObject):
         elif self.role == "controller":
             # Chuẩn bị nhận ảnh màn hình
             logger.info("Ready to receive screen images")
-    
+
     def end_session(self):
         """Kết thúc session"""
         self.session_active = False
         self.session_role = None
         self.network_client.session_id = None
-        
+
         # Dừng screen sharing thread nếu có
         if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
             logger.info("Stopping screen sharing thread")
             # Thread sẽ tự dừng khi session_active = False
-    
+
     def start_screen_sharing(self):
         """Bắt đầu chụp và gửi màn hình (HOST role)"""
         if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
             return
-            
+
         self.screen_sharing_thread = threading.Thread(
-            target=self._screen_sharing_worker,
-            daemon=True,
-            name="ScreenSharing"
+            target=self._screen_sharing_worker, daemon=True, name="ScreenSharing"
         )
         self.screen_sharing_thread.start()
         logger.info("Screen sharing thread started")
-    
+
     def _screen_sharing_worker(self):
         """Worker thread chụp và gửi màn hình"""
+        frame_delay = 1.0 / self.target_fps  # Sử dụng FPS từ config
+
         while self.session_active and self.role == "host":
+            frame_start = time.time()
             try:
+                # Kiểm tra session_id có tồn tại không
+                if not self.network_client.session_id:
+                    logger.warning("No session_id available, skipping frame")
+                    time.sleep(0.1)
+                    continue
+
                 # Chụp màn hình
-                img = capture_screen()
-                if img:
-                    # Tạo và gửi ImagePacket
+                img_data, original_width, original_height = capture_screen()
+                if img_data:
+                    # Tạo và gửi ImagePacket với thông tin kích thước gốc
                     image_packet = ImagePacket(
                         session_id=self.network_client.session_id,
-                        image_data=img
+                        image_data=lz4.compress(img_data),
+                        original_width=original_width,
+                        original_height=original_height,
                     )
                     self.network_client.send(image_packet)
-                    logger.debug(f"Sent screen image, size: {len(img)} bytes")
+                    logger.debug(
+                        f"Sent screen image, size: {len(img_data)} bytes, original: {original_width}x{original_height}"
+                    )
 
             except Exception as e:
                 logger.error(f"Error capturing/sending screen: {e}")
                 time.sleep(1)  # Đợi trước khi thử lại
+                continue
+
+            # Tính toán thời gian delay để duy trì FPS
+            frame_time = time.time() - frame_start
+            sleep_time = max(0, frame_delay - frame_time)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     # ====== CONNECTION SUCCESS/FAILURE ======
     def on_connection_successful_ui(self):
@@ -338,13 +358,20 @@ class MainWindowController(QObject):
         try:
             # Import và tạo RemoteWidget trong main thread
             from client.gui.remote_widget import RemoteWidget
-            self.main_window.remote_widget = RemoteWidget(self.network_client, self.main_window)
-            
+
+            self.main_window.remote_widget = RemoteWidget(
+                self.network_client, self.main_window
+            )
+
             # Connect disconnect signal từ remote widget
-            self.main_window.remote_widget.disconnect_requested.connect(self.disconnect_from_partner)
-            
+            self.main_window.remote_widget.disconnect_requested.connect(
+                self.disconnect_from_partner
+            )
+
             # Thêm tab mới cho remote desktop
-            tab_index = self.main_window.tabs.addTab(self.main_window.remote_widget, "🖥️ Remote Desktop")
+            tab_index = self.main_window.tabs.addTab(
+                self.main_window.remote_widget, "🖥️ Remote Desktop"
+            )
             self.main_window.tabs.setCurrentIndex(tab_index)
 
             # Update UI

@@ -20,14 +20,15 @@ from common.utils import unformat_numeric_id
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, server_host, server_port, use_ssl, cert_file):
+    def __init__(self, server_host, server_port, use_ssl, cert_file, fps=30):
         super().__init__()
 
         # Initialize components
         self.network_client = NetworkClient(
             server_host, server_port, use_ssl, cert_file
-        )       
+        )
         self.remote_widget = None
+        self.fps = fps  # Lưu FPS config
 
         # Generate password tự động khi khởi tạo
         self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
@@ -44,9 +45,7 @@ class MainWindow(QMainWindow):
         self.host_pass_input = None
 
         # Initialize controller for business logic
-        self.controller = MainWindowController(
-            self, self.network_client
-        )
+        self.controller = MainWindowController(self, self.network_client, self.fps)
 
         # Setup
         self.init_ui()
@@ -337,7 +336,7 @@ class MainWindow(QMainWindow):
         )
         self.connect_btn.clicked.connect(self.connect_to_host)
         layout.addWidget(self.connect_btn)
-        
+
         # Test Button - chỉ để test UI RemoteWidget
         self.test_ui_btn = QPushButton("🎨 Test Remote UI")
         self.test_ui_btn.setMinimumHeight(40)
@@ -406,31 +405,31 @@ class MainWindow(QMainWindow):
         """Test function: Show RemoteWidget UI without real connection"""
         try:
             from client.gui.remote_widget import RemoteWidget
-            
+
             # Tạo RemoteWidget với network_client dummy (None) và parent đúng
             self.remote_widget = RemoteWidget(None, self)
-            
+
             # Connect disconnect signal
             self.remote_widget.disconnect_requested.connect(self.close_test_remote_ui)
-            
+
             # Thêm tab mới
             tab_index = self.tabs.addTab(self.remote_widget, "🎨 Test Remote UI")
             self.tabs.setCurrentIndex(tab_index)
-            
+
             self.status_bar.showMessage("Remote UI test opened", 3000)
-            
+
         except Exception as e:
             self.status_bar.showMessage(f"Error opening test UI: {str(e)}", 5000)
-    
+
     def close_test_remote_ui(self):
         """Close test remote UI"""
-        if hasattr(self, 'remote_widget') and self.remote_widget:
+        if hasattr(self, "remote_widget") and self.remote_widget:
             # Tìm và remove tab
             for i in range(self.tabs.count()):
                 if self.tabs.widget(i) == self.remote_widget:
                     self.tabs.removeTab(i)
                     break
-            
+
             # Cleanup
             self.remote_widget.cleanup()
             self.remote_widget = None

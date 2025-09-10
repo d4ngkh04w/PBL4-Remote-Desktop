@@ -7,7 +7,7 @@ from typing import Union
 import lz4.frame as lz4
 
 from common.enum import PacketType
-from common.packet import Packet
+from common.packet import Packet, ImagePacket
 from common.safe_deserializer import SafeDeserializer
 
 
@@ -16,17 +16,17 @@ class Protocol:
     _HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
 
     @staticmethod
-    def _receive(sock: Union[socket.socket, ssl.SSLSocket], n: int) -> bytes:
+    def _receive(sock: Union[socket.socket, ssl.SSLSocket], size: int) -> bytes:
         """
         Nhận dữ liệu từ socket
         """
-        data = b""
-        while len(data) < n:
-            chunk = sock.recv(n - len(data))
+        data = bytearray()
+        while len(data) < size:
+            chunk = sock.recv(size - len(data))
             if not chunk:
                 raise ConnectionError("Connection closed unexpectedly")
-            data += chunk
-        return data
+            data.extend(chunk)
+        return bytes(data)
 
     @classmethod
     def send_packet(
@@ -39,11 +39,15 @@ class Protocol:
 
         :param socket: Gói tin được gửi đến socket này
         """
-        payload = pickle.dumps(packet)
-        compressed_payload = lz4.compress(payload)
-        length = len(compressed_payload)
+        if isinstance(packet, ImagePacket):
+            payload = pickle.dumps(packet)
+        else:
+            payload = pickle.dumps(packet)
+            payload = lz4.compress(payload)
+
+        length = len(payload)
         header = struct.pack(cls._HEADER_FORMAT, length, packet.packet_type.value)
-        socket.sendall(header + compressed_payload)
+        socket.sendall(header + payload)
 
     @classmethod
     def receive_packet(cls, socket: Union[socket.socket, ssl.SSLSocket]) -> Packet:
@@ -76,16 +80,28 @@ class Protocol:
         if packet_type not in valid_packet_types:
             raise ValueError(f"Invalid packet type: {packet_type}")
 
-        compressed_payload = cls._receive(socket, length)
-        if len(compressed_payload) == 0:
+        payload_from_socket = cls._receive(socket, length)
+        if len(payload_from_socket) == 0:
             raise ValueError("No compressed payload data")
 
-        if len(compressed_payload) != length:
+        if len(payload_from_socket) != length:
             raise ValueError("Compressed payload length mismatch")
 
-        payload = lz4.decompress(compressed_payload)
-        packet = SafeDeserializer.safe_loads(payload)
+        payload = b""
+        if packet_type == PacketType.IMAGE.value:
+            payload = payload_from_socket
+        else:
+            try:
+                payload = lz4.decompress(payload_from_socket)
+            except Exception as e:
+                error_message = (
+                    f"LZ4 decompression failed: {e}. "
+                    f"Packet Type in header was {packet_type}. "
+                    f"Received {len(payload_from_socket)} bytes, expected {length} bytes."
+                )
+                raise ValueError(error_message) from e
 
+        packet = SafeDeserializer.safe_loads(payload)
         if packet.packet_type.value != packet_type:
             raise ValueError(
                 f"Packet type mismatch: header={packet_type}, object={packet.packet_type.value}"

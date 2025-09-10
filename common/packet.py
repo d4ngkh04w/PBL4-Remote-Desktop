@@ -1,4 +1,5 @@
 from typing import Union
+import lz4.frame as lz4
 
 from common.enum import (
     PacketType,
@@ -26,13 +27,22 @@ class ImagePacket(BasePacket):
     Gói tin hình ảnh
     """
 
-    def __init__(self, session_id: str, image_data: bytes):
+    def __init__(
+        self,
+        session_id: str,
+        image_data: bytes,
+        original_width: int = 0,
+        original_height: int = 0,
+    ):
         super().__init__(PacketType.IMAGE)
         self.session_id = session_id
         self.image_data = image_data
+        # Kích thước gốc trước khi resize
+        self.original_width = original_width
+        self.original_height = original_height
 
     def __repr__(self):
-        return f"ImagePacket(type={self.packet_type}, size={len(self.image_data)})"
+        return f"ImagePacket(type={self.packet_type}, size={len(self.image_data)}, original={self.original_width}x{self.original_height})"
 
 
 class KeyBoardPacket(BasePacket):

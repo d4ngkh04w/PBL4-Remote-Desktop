@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class RelayHandler:
-    _thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="RelayHandler")
+    _thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="RelayHandler")
     _packet_handlers: Dict[type, Callable] = {}
     _shutdown_called = False
 
@@ -41,9 +41,14 @@ class RelayHandler:
     def relay_packet(packet: Packet, sender_id: str):
         """Xử lý và chuyển tiếp gói tin sử dụng thread pool"""
         try:
-            RelayHandler._thread_pool.submit(
-                RelayHandler._process_packet, packet, sender_id
-            )
+            if isinstance(packet, ImagePacket):
+                RelayHandler._thread_pool.submit(
+                    RelayHandler._relay_image_packet, packet
+                )
+            else:
+                RelayHandler._thread_pool.submit(
+                    RelayHandler._process_packet, packet, sender_id
+                )
         except Exception as e:
             logger.error(f"Failed to submit packet for processing: {e}")
 
@@ -57,10 +62,7 @@ class RelayHandler:
             handler = RelayHandler._packet_handlers.get(packet_type)
 
             if handler:
-                if packet_type == ImagePacket:
-                    handler(packet)
-                else:
-                    handler(packet, sender_id)
+                handler(packet, sender_id)
             else:
                 logger.warning(f"Unknown packet type: {packet.packet_type}")
         except Exception as e:
@@ -82,10 +84,18 @@ class RelayHandler:
     @staticmethod
     def _send(packet: Packet, target_id: str) -> bool:
         """Gửi gói tin đến client đích"""
-        target_socket = ClientManager.get_client_socket(target_id)
-        if target_socket:
-            Protocol.send_packet(target_socket, packet)
-            return True
+        target_socket, send_lock = ClientManager.get_client_socket_and_lock(target_id)
+        if target_socket and send_lock:
+            with send_lock:
+                try:
+                    Protocol.send_packet(target_socket, packet)
+                    return True
+                except (ConnectionError, BrokenPipeError) as e:
+                    logger.warning(
+                        f"Connection error while sending to {target_id}: {e}. Client might have disconnected."
+                    )
+                    ClientManager.remove_client(target_id)
+                    return False
         else:
             return False
 
@@ -104,12 +114,15 @@ class RelayHandler:
                     f"Client {controller_id} connection to {packet.host_id} failed: Target offline"
                 )
         else:
-            target_socket = ClientManager.get_client_socket(packet.host_id)
-            if target_socket:
-                Protocol.send_packet(target_socket, packet)
+            if RelayHandler._send(packet, packet.host_id):
                 logger.debug(
                     f"Client {controller_id} connection request sent to {packet.host_id}"
                 )
+            else:
+                response = ResponseConnectionPacket(
+                    success=False, message="Target host not found"
+                )
+                RelayHandler._send(response, controller_id)
 
     @staticmethod
     def _relay_request_password(packet: RequestPasswordPacket, host_id: str):
@@ -151,10 +164,6 @@ class RelayHandler:
                 session_id = SessionManager.create_session(
                     host_id=host_id, controller_id=packet.controller_id
                 )
-                session_packet = SessionPacket(
-                    session_id=session_id,
-                    action=SessionAction.CREATED,
-                )
 
                 if not RelayHandler._send(packet, packet.controller_id):
                     logger.warning(f"Controller {packet.controller_id} not found")
@@ -164,6 +173,11 @@ class RelayHandler:
                     RelayHandler._send(response, host_id)
                     SessionManager.end_session(session_id)
                     return
+
+                session_packet = SessionPacket(
+                    session_id=session_id,
+                    action=SessionAction.CREATED,
+                )
 
                 if not RelayHandler._send(session_packet, packet.controller_id):
                     logger.warning(f"Controller {packet.controller_id} not found")
@@ -204,6 +218,7 @@ class RelayHandler:
         """Chuyển tiếp ImagePacket từ host đến controller"""
         session_id = packet.session_id
         session_info = SessionManager.get_session_info(session_id)
+
         if not session_info:
             logger.warning(f"No active session found for session {session_id}")
             return
@@ -216,15 +231,14 @@ class RelayHandler:
             action=SessionAction.ENDED,
         )
 
-        if not ClientManager.is_client_online(controller_id):
-            logger.warning(f"Controller {controller_id} is offline, ending session")
+        if not SessionManager.is_client_in_session(
+            host_id
+        ) or not SessionManager.is_client_in_session(controller_id):
+            logger.warning(
+                f"One of the clients is no longer in session, ending session {session_id}"
+            )
             SessionManager.end_session(session_id)
             RelayHandler._send(session_packet, host_id)
-            return
-
-        if not ClientManager.is_client_online(host_id):
-            logger.warning(f"Host {host_id} is offline, ending session")
-            SessionManager.end_session(session_id)
             RelayHandler._send(session_packet, controller_id)
             return
 
@@ -235,6 +249,4 @@ class RelayHandler:
             )
             RelayHandler._send(response, host_id)
         else:
-            logger.debug(
-                f"Image packet from host {host_id} sent to controller {controller_id}"
-            )
+            logger.debug(f"Image packet relayed to controller {controller_id}")

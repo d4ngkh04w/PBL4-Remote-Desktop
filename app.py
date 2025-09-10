@@ -21,6 +21,7 @@ if args.client:
             server_port=args.port,
             use_ssl=args.ssl,
             cert_file=args.cert,
+            fps=args.fps,
         )
         client_instance.run()
     except KeyboardInterrupt:
