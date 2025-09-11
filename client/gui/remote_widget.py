@@ -229,7 +229,12 @@ class RemoteWidget(QWidget):
     def handle_image_packet(self, packet):
         """Handle incoming image packet from remote host"""
         try:
-            image = QImage.fromData(lz4.decompress(packet.image_data))
+            # Giải nén dữ liệu
+            decompressed_data = lz4.decompress(packet.image_data)
+
+            # Tạo QImage từ dữ liệu
+            image = QImage.fromData(decompressed_data)
+
             if not image.isNull():
                 self.current_pixmap = QPixmap.fromImage(image)
 
@@ -271,7 +276,7 @@ class RemoteWidget(QWidget):
             self.show_error(f"Error handling image: {str(e)}")
 
     def update_display(self):
-        """Update the image display based on current view mode"""
+        """Update the display with the current pixmap"""
         if not self.current_pixmap:
             return
 

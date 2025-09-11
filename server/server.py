@@ -129,7 +129,7 @@ class Server:
                 if not packet:
                     break
 
-                RelayHandler.relay_packet(packet, client_id)
+                RelayHandler.relay_packet(packet, client_socket)
 
         except Exception:
             pass

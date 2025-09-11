@@ -3,7 +3,7 @@ import ssl
 import threading
 import time
 import traceback
-from typing import Union
+from typing import Union, Optional, Any, Callable
 import logging
 
 from common.packet import (
@@ -28,7 +28,7 @@ class NetworkClient:
         self.socket = None
         self.use_ssl = use_ssl
         self.cert_file = cert_file
-        self.session_id = None
+        self.session_id: Optional[str] = None
         self.running = False
         self.listener_thread = None  # Thread để lắng nghe dữ liệu từ server
         self._disconnected = False  # Flag to track if already disconnected
@@ -106,7 +106,6 @@ class NetworkClient:
                 self.socket.settimeout(0.5)
                 packet = Protocol.receive_packet(self.socket)
                 if packet:
-                    logger.debug(f"Received packet: {packet}")
                     if self.on_message_received:
                         self.on_message_received(packet)
 

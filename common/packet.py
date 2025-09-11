@@ -29,13 +29,11 @@ class ImagePacket(BasePacket):
 
     def __init__(
         self,
-        session_id: str,
         image_data: bytes,
         original_width: int = 0,
         original_height: int = 0,
     ):
         super().__init__(PacketType.IMAGE)
-        self.session_id = session_id
         self.image_data = image_data
         # Kích thước gốc trước khi resize
         self.original_width = original_width
@@ -50,9 +48,8 @@ class KeyBoardPacket(BasePacket):
     Gói tin bàn phím
     """
 
-    def __init__(self, session_id: str, event_type: KeyBoardEventType, key_code: int):
+    def __init__(self, event_type: KeyBoardEventType, key_code: int):
         super().__init__(PacketType.KEYBOARD)
-        self.session_id = session_id
         self.event_type = event_type
         self.key_code = key_code
 
@@ -67,13 +64,11 @@ class MousePacket(BasePacket):
 
     def __init__(
         self,
-        session_id: str,
         event_type: MouseEventType,
         button: MouseButton,
         position: tuple[int, int],
     ):
         super().__init__(PacketType.MOUSE)
-        self.session_id = session_id
         self.event_type = event_type
         self.button = button
         self.position = position

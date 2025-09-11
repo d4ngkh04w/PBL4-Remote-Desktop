@@ -8,6 +8,7 @@ ClientInfo = TypedDict(
     {
         "socket": Union[socket.socket, ssl.SSLSocket],
         "ip": str,
+        "id": str,
         "status": str,
         "send_lock": threading.Lock,
     },
@@ -30,6 +31,7 @@ class ClientManager:
             cls.__active_clients[client_id] = ClientInfo(
                 socket=client_socket,
                 ip=client_ip,
+                id=client_id,
                 status="ONLINE",
                 send_lock=threading.Lock(),
             )
@@ -47,9 +49,15 @@ class ClientManager:
                 cls.__active_clients[client_id]["status"] = status
 
     @classmethod
-    def get_client_info(cls, client_id: str):
+    def get_client_info(cls, client: str | socket.socket | ssl.SSLSocket):
         with cls._lock:
-            return cls.__active_clients.get(client_id)
+            if isinstance(client, str):
+                return cls.__active_clients.get(client)
+            elif isinstance(client, (socket.socket, ssl.SSLSocket)):
+                for info in cls.__active_clients.values():
+                    if info.get("socket") == client:
+                        return info
+        return None
 
     @classmethod
     def get_client_socket(cls, client_id: str) -> socket.socket | ssl.SSLSocket | None:
@@ -62,22 +70,19 @@ class ClientManager:
         return None
 
     @classmethod
-    def get_client_socket_and_lock(
-        cls, client_id: str
-    ) -> tuple[Union[socket.socket, ssl.SSLSocket, None], Union[threading.Lock, None]]:
-        """
-        Lấy socket và send_lock
-        """
+    def get_client_lock(
+        cls, client: str | socket.socket | ssl.SSLSocket
+    ) -> Union[threading.Lock, None]:
         with cls._lock:
-            client_info = cls.__active_clients.get(client_id)
-            if client_info:
-                return client_info.get("socket"), client_info.get("send_lock")
-        return None, None
-
-    @classmethod
-    def get_all_clients(cls):
-        with cls._lock:
-            return cls.__active_clients.copy()
+            if isinstance(client, str):
+                client_info = cls.__active_clients.get(client)
+                if client_info:
+                    return client_info.get("send_lock")
+            elif isinstance(client, (socket.socket, ssl.SSLSocket)):
+                for info in cls.__active_clients.values():
+                    if info.get("socket") is client:
+                        return info.get("send_lock")
+        return None
 
     @classmethod
     def is_client_online(cls, client_id: str) -> bool:

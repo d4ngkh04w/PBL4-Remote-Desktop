@@ -98,7 +98,6 @@ class MainWindowController(QObject):
     # ====== MESSAGE HANDLING ======
     def handle_server_message(self, packet: Packet):
         """Xử lý tin nhắn từ server - phân chia theo loại packet"""
-        logger.debug(f"Received packet: {packet.__class__.__name__}")
         match packet:
             case AssignIdPacket():
                 self.handle_host_assign_id(packet)
@@ -114,7 +113,12 @@ class MainWindowController(QObject):
                 logger.debug(f"Handling SessionPacket: {packet}")
                 self.handle_session_packet(packet)
             case ImagePacket():
-                if self.main_window.remote_widget and self.role == "controller":
+
+                if (
+                    self.role == "controller"
+                    and hasattr(self.main_window, "remote_widget")
+                    and self.main_window.remote_widget
+                ):
                     self.main_window.remote_widget.handle_image_packet(packet)
             case _:
                 logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
@@ -214,6 +218,10 @@ class MainWindowController(QObject):
         self.main_window.connect_btn.setText("🔄 Connecting...")
 
         try:
+            # Set role as controller when sending connection request
+            self.role = "controller"
+            logger.info("Role set to CONTROLLER (screen viewer)")
+
             connect_packet = RequestConnectionPacket(host_id, self.main_window.my_id)
             self.network_client.send(connect_packet)
             self.main_window.status_bar.showMessage(f"Connecting to Host ID: {host_id}")
@@ -246,10 +254,13 @@ class MainWindowController(QObject):
     def handle_controller_auth_response(self, packet: AuthenticationResultPacket):
         """Controller: Nhận phản hồi xác thực từ host"""
         if packet.success:
-            self.role = "controller"
-            self.connection_successful.emit()
+            # Role đã được set trong handle_controller_connect
+            logger.info("Authentication successful")
+            # connection_successful sẽ được emit từ handle_session_packet
         else:
             error_msg = packet.message if packet.message else "Connection failed"
+            # Reset role on auth failure
+            self.role = None
             # Emit signal thay vì gọi trực tiếp
             self.connection_failed.emit(error_msg)
 
@@ -263,7 +274,7 @@ class MainWindowController(QObject):
             # Xác định vai trò và bắt đầu session
             self.start_session()
 
-            # ✅ Emit connection_successful ở đây thay vì ở auth response
+            # Emit connection_successful sau khi session bắt đầu
             self.connection_successful.emit()
 
         else:
@@ -277,7 +288,7 @@ class MainWindowController(QObject):
         """Bắt đầu session với vai trò đã xác định"""
         self.session_active = True
 
-        # Nếu chưa có role, đây là HOST (không nhận AuthenticationResultPacket)
+        # Nếu chưa có role, đây là HOST (không gửi RequestConnectionPacket)
         if self.role is None:
             self.role = "host"
             logger.info("Role set to HOST (screen sender)")
@@ -296,6 +307,8 @@ class MainWindowController(QObject):
         self.session_active = False
         self.session_role = None
         self.network_client.session_id = None
+        # Reset role để chuẩn bị cho connection mới
+        self.role = None
 
         # Dừng screen sharing thread nếu có
         if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
@@ -331,15 +344,11 @@ class MainWindowController(QObject):
                 if img_data:
                     # Tạo và gửi ImagePacket với thông tin kích thước gốc
                     image_packet = ImagePacket(
-                        session_id=self.network_client.session_id,
                         image_data=lz4.compress(img_data),
                         original_width=original_width,
                         original_height=original_height,
                     )
                     self.network_client.send(image_packet)
-                    logger.debug(
-                        f"Sent screen image, size: {len(img_data)} bytes, original: {original_width}x{original_height}"
-                    )
 
             except Exception as e:
                 logger.error(f"Error capturing/sending screen: {e}")
