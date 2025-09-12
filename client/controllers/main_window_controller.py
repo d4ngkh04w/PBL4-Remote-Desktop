@@ -1,10 +1,13 @@
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QObject, pyqtSignal
 import logging
-from common.utils import capture_screen
 import lz4.frame as lz4
 import threading
 import time
+import io
+
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QObject, pyqtSignal
+import numpy as np
+from PIL import Image
 
 from common.packet import (
     Packet,
@@ -13,10 +16,12 @@ from common.packet import (
     SendPasswordPacket,
     AuthenticationResultPacket,
     ImagePacket,
+    ImageChunkPacket,
     AssignIdPacket,
     SessionPacket,
 )
 from common.password_manager import PasswordManager
+from common.utils import capture_screen
 from common.utils import unformat_numeric_id, format_numeric_id
 from common.enum import SessionAction
 from client.network.network_client import NetworkClient
@@ -113,13 +118,16 @@ class MainWindowController(QObject):
                 logger.debug(f"Handling SessionPacket: {packet}")
                 self.handle_session_packet(packet)
             case ImagePacket():
-
-                if (
-                    self.role == "controller"
-                    and hasattr(self.main_window, "remote_widget")
-                    and self.main_window.remote_widget
+                if self.role == "controller" and hasattr(
+                    self.main_window, "remote_widget"
                 ):
-                    self.main_window.remote_widget.handle_image_packet(packet)
+                    self.main_window.remote_widget.handle_full_image_packet(packet)
+
+            case ImageChunkPacket():  # Xử lý packet mới
+                if self.role == "controller" and hasattr(
+                    self.main_window, "remote_widget"
+                ):
+                    self.main_window.remote_widget.handle_image_chunk_packet(packet)
             case _:
                 logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
 
@@ -170,7 +178,10 @@ class MainWindowController(QObject):
         else:
             # Gửi phản hồi từ chối kết nối
             auth_packet = AuthenticationResultPacket(
-                controller_id, False, "Connection refused by user"
+                controller_id=controller_id,
+                host_id=self.main_window.my_id,
+                success=False,
+                message="Connection refused by user",
             )
             self.network_client.send(auth_packet)
             logger.info(f"Connection refused by user for controller: {controller_id}")
@@ -185,13 +196,19 @@ class MainWindowController(QObject):
             # Xác thực password
             if received_password == self.main_window.my_password:
                 auth_result_packet = AuthenticationResultPacket(
-                    controller_id, True, "Authentication successful"
+                    controller_id=controller_id,
+                    host_id=self.main_window.my_id,
+                    success=True,
+                    message="Authentication successful",
                 )
                 self.network_client.send(auth_result_packet)
                 logger.debug("Password correct, authentication successful")
             else:
                 auth_result_packet = AuthenticationResultPacket(
-                    controller_id, False, "Incorrect password"
+                    controller_id=controller_id,
+                    host_id=self.main_window.my_id,
+                    success=False,
+                    message="Incorrect password",
                 )
                 self.network_client.send(auth_result_packet)
                 logger.debug("Password incorrect, authentication failed")
@@ -254,14 +271,10 @@ class MainWindowController(QObject):
     def handle_controller_auth_response(self, packet: AuthenticationResultPacket):
         """Controller: Nhận phản hồi xác thực từ host"""
         if packet.success:
-            # Role đã được set trong handle_controller_connect
             logger.info("Authentication successful")
-            # connection_successful sẽ được emit từ handle_session_packet
         else:
             error_msg = packet.message if packet.message else "Connection failed"
-            # Reset role on auth failure
             self.role = None
-            # Emit signal thay vì gọi trực tiếp
             self.connection_failed.emit(error_msg)
 
     # ====== CONTROLLER/HOST ======
@@ -328,38 +341,113 @@ class MainWindowController(QObject):
 
     def _screen_sharing_worker(self):
         """Worker thread chụp và gửi màn hình"""
-        frame_delay = 1.0 / self.target_fps  # Sử dụng FPS từ config
+        frame_delay = 1.0 / self.target_fps
+        previous_frame = None
+
+        try:
+            img_pil = capture_screen()
+            original_width, original_height = img_pil.size
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="JPEG", quality=75, optimize=True)
+            img_data = buffer.getvalue()
+
+            initial_packet = ImagePacket(
+                image_data=lz4.compress(img_data),
+                original_width=original_width,
+                original_height=original_height,
+            )
+            self.network_client.send(initial_packet)
+            previous_frame = np.array(img_pil)
+        except Exception as e:
+            logger.error(f"Error sending initial screen: {e}")
+            self.session_active = False
+
+        BLOCK_SIZE = 16384
 
         while self.session_active and self.role == "host":
             frame_start = time.time()
             try:
-                # Kiểm tra session_id có tồn tại không
-                if not self.network_client.session_id:
-                    logger.warning("No session_id available, skipping frame")
-                    time.sleep(0.1)
-                    continue
+                current_frame_pil = capture_screen()
+                current_frame_np = np.array(current_frame_pil)
 
-                # Chụp màn hình
-                img_data, original_width, original_height = capture_screen()
-                if img_data:
-                    # Tạo và gửi ImagePacket với thông tin kích thước gốc
-                    image_packet = ImagePacket(
-                        image_data=lz4.compress(img_data),
-                        original_width=original_width,
-                        original_height=original_height,
-                    )
-                    self.network_client.send(image_packet)
+                if previous_frame is None:
+                    previous_frame = np.zeros_like(current_frame_np)
+
+                height, width, _ = current_frame_np.shape
+
+                for y in range(0, height, BLOCK_SIZE):
+                    for x in range(0, width, BLOCK_SIZE):
+                        # Lấy ra block từ ảnh cũ và ảnh mới
+                        current_block = current_frame_np[
+                            y : y + BLOCK_SIZE, x : x + BLOCK_SIZE
+                        ]
+                        previous_block = previous_frame[
+                            y : y + BLOCK_SIZE, x : x + BLOCK_SIZE
+                        ]
+
+                        # So sánh 2 block bằng numpy
+                        if not np.array_equal(current_block, previous_block):
+                            # Nếu khác nhau, gửi block này đi
+                            block_height, block_width, _ = current_block.shape
+
+                            # Chuyển block numpy trở lại ảnh PIL để nén và gửi
+                            block_pil = Image.fromarray(current_block)
+                            buffer = io.BytesIO()
+                            block_pil.save(
+                                buffer, format="JPEG", quality=75, optimize=True
+                            )
+
+                            chunk_packet = ImageChunkPacket(
+                                image_data=lz4.compress(buffer.getvalue()),
+                                x=x,
+                                y=y,
+                                width=block_width,
+                                height=block_height,
+                            )
+                            self.network_client.send(chunk_packet)
+
+                previous_frame = current_frame_np
 
             except Exception as e:
-                logger.error(f"Error capturing/sending screen: {e}")
-                time.sleep(1)  # Đợi trước khi thử lại
-                continue
+                logger.error(f"Error in screen sharing worker: {e}")
+                time.sleep(1)
 
-            # Tính toán thời gian delay để duy trì FPS
             frame_time = time.time() - frame_start
             sleep_time = max(0, frame_delay - frame_time)
             if sleep_time > 0:
                 time.sleep(sleep_time)
+        # frame_delay = 1.0 / self.target_fps
+
+        # while self.session_active and self.role == "host":
+        #     frame_start = time.time()
+        #     try:
+        #         # Kiểm tra session_id có tồn tại không
+        #         if not self.network_client.session_id:
+        #             logger.warning("No session_id available, skipping frame")
+        #             time.sleep(0.1)
+        #             continue
+
+        #         # Chụp màn hình
+        #         img_data, original_width, original_height = capture_screen()
+        #         if img_data:
+        #             # Tạo và gửi ImagePacket với thông tin kích thước gốc
+        #             image_packet = ImagePacket(
+        #                 image_data=lz4.compress(img_data),
+        #                 original_width=original_width,
+        #                 original_height=original_height,
+        #             )
+        #             self.network_client.send(image_packet)
+
+        #     except Exception as e:
+        #         logger.error(f"Error capturing/sending screen: {e}")
+        #         time.sleep(1)  # Đợi trước khi thử lại
+        #         continue
+
+        #     # Tính toán thời gian delay để duy trì FPS
+        #     frame_time = time.time() - frame_start
+        #     sleep_time = max(0, frame_delay - frame_time)
+        #     if sleep_time > 0:
+        #         time.sleep(sleep_time)
 
     # ====== CONNECTION SUCCESS/FAILURE ======
     def on_connection_successful_ui(self):

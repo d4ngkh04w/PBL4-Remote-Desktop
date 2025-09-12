@@ -1,3 +1,4 @@
+import queue
 import socket
 import ssl
 import threading
@@ -46,6 +47,8 @@ class Server:
                 self.socket = plain_socket
                 logger.info(f"Listening on {self.host}:{self.port}")
 
+            SessionManager.start_cleanup()
+
             while self.is_listening:
                 self.socket.settimeout(0.5)
                 try:
@@ -66,9 +69,12 @@ class Server:
                 except socket.timeout:
                     continue
                 except ssl.SSLError as e:
-                    logger.error(f"SSL error accepting client connection: {e}")
+                    if self.is_listening:
+                        logger.error(f"SSL error accepting client connection: {e}")
                     continue
                 except Exception as e:
+                    if isinstance(e, OSError) and (e.errno == 9 or e.errno == 10038):
+                        break
                     logger.error(f"Error accepting client connection: {e}")
                     continue
 
@@ -92,7 +98,6 @@ class Server:
                 self.socket.close()
             except Exception:
                 pass
-
         try:
             RelayHandler.shutdown()
         except Exception as e:
@@ -113,6 +118,26 @@ class Server:
         except Exception as e:
             logger.error(f"Error receiving packet: {e}")
 
+    def sender_worker(
+        self, client_socket: ssl.SSLSocket | socket.socket, client_id: str
+    ):
+        """Thread chuyên gửi packet từ queue của một client."""
+        send_queue = ClientManager.get_client_queue(client_id)
+        if not send_queue:
+            return
+
+        while self.is_listening:
+            try:
+                packet = send_queue.get(timeout=None)
+                Protocol.send_packet(client_socket, packet)
+                send_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception:
+                break
+
+        logger.debug(f"Sender worker for client {client_id} stopped")
+
     def handle_client(
         self,
         client_socket: ssl.SSLSocket | socket.socket,
@@ -124,6 +149,11 @@ class Server:
             ClientManager.add_client(client_socket, client_id, client_addr)
             logger.info(f"Client {client_id} connected from {client_addr}")
 
+            sender_thread = threading.Thread(
+                target=self.sender_worker, args=(client_socket, client_id), daemon=True
+            )
+            sender_thread.start()
+
             while True:
                 packet = Protocol.receive_packet(client_socket)
                 if not packet:
@@ -131,6 +161,8 @@ class Server:
 
                 RelayHandler.relay_packet(packet, client_socket)
 
+        except ValueError as ve:
+            logger.error(f"{ve}")
         except Exception:
             pass
         finally:

@@ -7,4 +7,3 @@ logs/
 *.key
 *.pem
 !cert.pem
-*.db

@@ -2,7 +2,6 @@ import socket
 import ssl
 import threading
 import time
-import traceback
 from typing import Union, Optional, Any, Callable
 import logging
 
@@ -14,6 +13,7 @@ from common.packet import (
     RequestPasswordPacket,
     SendPasswordPacket,
     AuthenticationResultPacket,
+    ImageChunkPacket,
 )
 from common.protocol import Protocol
 from typing import Callable, Optional, Any
@@ -31,7 +31,7 @@ class NetworkClient:
         self.session_id: Optional[str] = None
         self.running = False
         self.listener_thread = None  # Thread để lắng nghe dữ liệu từ server
-        self._disconnected = False  # Flag to track if already disconnected
+        self._disconnected = False
 
         # Khóa để đảm bảo thread-safe vì nhiều thread có thể truy cập vào socket cùng lúc
         self._lock = threading.Lock()
@@ -61,7 +61,7 @@ class NetworkClient:
             self.socket.settimeout(30)
             self.socket.connect((self.host, self.port))
             self.running = True
-            self._disconnected = False  # Reset disconnected flag on successful connect
+            self._disconnected = False
             logger.info(f"Connected to server at {self.host}:{self.port}")
 
             self.listener_thread = threading.Thread(
@@ -83,11 +83,13 @@ class NetworkClient:
             RequestPasswordPacket,
             AuthenticationResultPacket,
             SendPasswordPacket,
+            ImageChunkPacket,
         ],
     ):
         """Gửi packet đến server"""
         if self.socket is None or not self.running:
             logger.warning("Not connected to server")
+            self.disconnect()
             return
         try:
             with self._lock:
@@ -102,6 +104,7 @@ class NetworkClient:
             try:
                 if self.socket is None:
                     logger.warning("Not connected to server")
+                    self.disconnect()
                     return
                 self.socket.settimeout(0.5)
                 packet = Protocol.receive_packet(self.socket)
@@ -112,7 +115,10 @@ class NetworkClient:
             except socket.timeout:
                 continue
             except Exception as e:
-                logger.debug(f"Error receiving data from server - {e}")
+                if isinstance(e, OSError) and (e.errno == 9 or e.errno == 10038):
+                    break
+
+                logger.error(f"Error receiving data from server - {e}")
                 self.disconnect()
 
     def disconnect(self):

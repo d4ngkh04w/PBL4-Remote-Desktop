@@ -1,7 +1,8 @@
 import socket
 import ssl
 import threading
-from typing import Union, TypedDict
+from typing import Optional, Union, TypedDict
+from queue import Queue
 
 ClientInfo = TypedDict(
     "ClientInfo",
@@ -10,14 +11,13 @@ ClientInfo = TypedDict(
         "ip": str,
         "id": str,
         "status": str,
-        "send_lock": threading.Lock,
+        "queue": Queue,  # Hàng đợi để gửi gói tin
     },
 )
 
 
 class ClientManager:
     __active_clients: dict[str, ClientInfo] = {}
-
     _lock = threading.Lock()
 
     @classmethod
@@ -33,7 +33,7 @@ class ClientManager:
                 ip=client_ip,
                 id=client_id,
                 status="ONLINE",
-                send_lock=threading.Lock(),
+                queue=Queue(maxsize=6144),
             )
 
     @classmethod
@@ -70,19 +70,10 @@ class ClientManager:
         return None
 
     @classmethod
-    def get_client_lock(
-        cls, client: str | socket.socket | ssl.SSLSocket
-    ) -> Union[threading.Lock, None]:
+    def get_client_queue(cls, client_id: str) -> Optional[Queue]:
         with cls._lock:
-            if isinstance(client, str):
-                client_info = cls.__active_clients.get(client)
-                if client_info:
-                    return client_info.get("send_lock")
-            elif isinstance(client, (socket.socket, ssl.SSLSocket)):
-                for info in cls.__active_clients.values():
-                    if info.get("socket") is client:
-                        return info.get("send_lock")
-        return None
+            client_info = cls.__active_clients.get(client_id)
+            return client_info["queue"] if client_info else None
 
     @classmethod
     def is_client_online(cls, client_id: str) -> bool:

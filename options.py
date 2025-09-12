@@ -49,9 +49,9 @@ def get_parser():
     general.add_argument(
         "--fps",
         type=int,
-        default=30,
+        default=20,
         metavar="FPS",
-        help="Screen sharing frame rate (default: 30 FPS)",
+        help="Screen sharing frame rate (default: 20 FPS)",
     )
 
     security = parser.add_argument_group("Security Options")

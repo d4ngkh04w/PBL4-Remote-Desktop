@@ -7,7 +7,7 @@ from typing import Union
 import lz4.frame as lz4
 
 from common.enum import PacketType
-from common.packet import Packet, ImagePacket
+from common.packet import Packet, ImagePacket, ImageChunkPacket
 from common.safe_deserializer import SafeDeserializer
 
 
@@ -65,6 +65,7 @@ class Protocol:
 
         valid_packet_types = {
             PacketType.IMAGE.value,
+            PacketType.IMAGE_CHUNK.value,
             PacketType.KEYBOARD.value,
             PacketType.MOUSE.value,
             PacketType.ASSIGN_ID.value,

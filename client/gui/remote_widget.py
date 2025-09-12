@@ -10,9 +10,11 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QSizePolicy,
 )
-from PyQt5.QtGui import QPixmap, QImage, QFont
+from PyQt5.QtGui import QPixmap, QImage, QPainter
 from PyQt5.QtCore import Qt, pyqtSignal
+
 from client.network.network_client import NetworkClient
+from common.packet import ImagePacket, ImageChunkPacket
 
 
 class RemoteWidget(QWidget):
@@ -25,6 +27,8 @@ class RemoteWidget(QWidget):
         self.current_pixmap = None
         self.original_width = 0
         self.original_height = 0
+
+        self.full_screen_pixmap = None
 
         self.init_ui()
 
@@ -226,19 +230,65 @@ class RemoteWidget(QWidget):
             }
         """
 
-    def handle_image_packet(self, packet):
-        """Handle incoming image packet from remote host"""
-        try:
-            # Giải nén dữ liệu
-            decompressed_data = lz4.decompress(packet.image_data)
+    # def handle_image_packet(self, packet):
+    #     """Handle incoming image packet from remote host"""
+    #     try:
+    #         # Giải nén dữ liệu
+    #         decompressed_data = lz4.decompress(packet.image_data)
 
-            # Tạo QImage từ dữ liệu
+    #         # Tạo QImage từ dữ liệu
+    #         image = QImage.fromData(decompressed_data)
+
+    #         if not image.isNull():
+    #             self.current_pixmap = QPixmap.fromImage(image)
+
+    #             # Lưu thông tin kích thước gốc để hiển thị chính xác
+    #             self.original_width = (
+    #                 packet.original_width
+    #                 if packet.original_width > 0
+    #                 else image.width()
+    #             )
+    #             self.original_height = (
+    #                 packet.original_height
+    #                 if packet.original_height > 0
+    #                 else image.height()
+    #             )
+
+    #             self.update_display()
+
+    #             # Update status info với kích thước gốc
+    #             self.info_label.setText(
+    #                 f"Resolution: {self.original_width}x{self.original_height} | "
+    #                 f"Quality: High | Size: {len(packet.image_data)} bytes"
+    #             )
+
+    #             # Update connection status
+    #             self.status_label.setText("🔗 Connected - Receiving")
+    #             self.status_label.setStyleSheet(
+    #                 """
+    #                 QLabel {
+    #                     color: #28a745;
+    #                     font-weight: bold;
+    #                     font-size: 14px;
+    #                     padding: 5px;
+    #                 }
+    #             """
+    #             )
+    #         else:
+    #             self.show_error("Failed to decode image data")
+    #     except Exception as e:
+    #         self.show_error(f"Error handling image: {str(e)}")
+
+    def handle_full_image_packet(self, packet: ImagePacket):
+        """Xử lý gói tin ảnh đầy đủ (khung hình đầu tiên)"""
+        try:
+            decompressed_data = lz4.decompress(packet.image_data)
             image = QImage.fromData(decompressed_data)
 
             if not image.isNull():
-                self.current_pixmap = QPixmap.fromImage(image)
+                self.full_screen_pixmap = QPixmap.fromImage(image)
+                self.current_pixmap = self.full_screen_pixmap.copy()
 
-                # Lưu thông tin kích thước gốc để hiển thị chính xác
                 self.original_width = (
                     packet.original_width
                     if packet.original_width > 0
@@ -252,13 +302,10 @@ class RemoteWidget(QWidget):
 
                 self.update_display()
 
-                # Update status info với kích thước gốc
                 self.info_label.setText(
                     f"Resolution: {self.original_width}x{self.original_height} | "
                     f"Quality: High | Size: {len(packet.image_data)} bytes"
                 )
-
-                # Update connection status
                 self.status_label.setText("🔗 Connected - Receiving")
                 self.status_label.setStyleSheet(
                     """
@@ -274,6 +321,30 @@ class RemoteWidget(QWidget):
                 self.show_error("Failed to decode image data")
         except Exception as e:
             self.show_error(f"Error handling image: {str(e)}")
+
+    def handle_image_chunk_packet(self, packet: ImageChunkPacket):
+        """Xử lý gói tin chứa một vùng ảnh thay đổi"""
+        if self.full_screen_pixmap is None:
+            # Bỏ qua các chunk nếu chưa nhận được ảnh nền đầy đủ
+            return
+
+        try:
+            decompressed_data = lz4.decompress(packet.image_data)
+            chunk_image = QImage.fromData(decompressed_data)
+
+            if not chunk_image.isNull():
+                # Sử dụng QPainter để vẽ chunk lên pixmap nền
+                painter = QPainter(self.full_screen_pixmap)
+                painter.drawImage(packet.x, packet.y, chunk_image)
+                painter.end()
+
+                # Cập nhật lại pixmap đang hiển thị và vẽ lại widget
+                self.current_pixmap = self.full_screen_pixmap.copy()
+                self.update_display()
+            else:
+                self.show_error("Failed to decode chunk image data")
+        except Exception as e:
+            self.show_error(f"Error handling image chunk: {str(e)}")
 
     def update_display(self):
         """Update the display with the current pixmap"""

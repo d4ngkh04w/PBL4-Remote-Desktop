@@ -24,7 +24,7 @@ class BasePacket:
 
 class ImagePacket(BasePacket):
     """
-    Gói tin hình ảnh
+    Gói tin chứa toàn bộ màn hình (dùng cho lần gửi đầu tiên)
     """
 
     def __init__(
@@ -41,6 +41,30 @@ class ImagePacket(BasePacket):
 
     def __repr__(self):
         return f"ImagePacket(type={self.packet_type}, size={len(self.image_data)}, original={self.original_width}x{self.original_height})"
+
+
+class ImageChunkPacket(BasePacket):
+    """
+    Gói tin chứa một phần của ảnh đã thay đổi
+    """
+
+    def __init__(
+        self,
+        image_data: bytes,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ):
+        super().__init__(PacketType.IMAGE_CHUNK)
+        self.image_data = image_data
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+    def __repr__(self):
+        return f"ImageChunkPacket(type={self.packet_type}, pos=({self.x},{self.y}), size={self.width}x{self.height})"
 
 
 class KeyBoardPacket(BasePacket):
@@ -135,7 +159,7 @@ class SendPasswordPacket(BasePacket):
         self.password = password
 
     def __repr__(self):
-        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id})"
+        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id}, password={self.password})"
 
 
 class RequestPasswordPacket(BasePacket):
@@ -157,9 +181,10 @@ class AuthenticationResultPacket(BasePacket):
     Gói tin kết quả xác thực
     """
 
-    def __init__(self, controller_id: str, success: bool, message: str):
+    def __init__(self, controller_id: str, host_id: str, success: bool, message: str):
         super().__init__(PacketType.AUTHENTICATION_RESULT)
         self.controller_id = controller_id
+        self.host_id = host_id
         self.success = success
         self.message = message
 
@@ -183,6 +208,7 @@ class SessionPacket(BasePacket):
 
 Packet = Union[
     ImagePacket,
+    ImageChunkPacket,
     KeyBoardPacket,
     MousePacket,
     AssignIdPacket,

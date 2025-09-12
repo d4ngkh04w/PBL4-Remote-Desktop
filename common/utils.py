@@ -1,7 +1,7 @@
 import secrets
 import mss
 from PIL import Image
-import io
+import psutil
 
 
 def generate_numeric_id(num_digits: int = 9) -> str:
@@ -43,20 +43,17 @@ def unformat_numeric_id(formatted_id: str) -> str:
     return formatted_id.replace(" ", "")
 
 
-def capture_screen() -> tuple[bytes, int, int]:
-    """Capture screen và trả về"""
-    with mss.mss() as sct:
+def capture_screen() -> Image.Image:
+    """Capture screen và trả về đối tượng PIL Image"""
+    with mss.mss(with_cursor=True) as sct:
         monitor = sct.monitors[1]
         img = sct.grab(monitor)
         img_pil = Image.frombytes("RGB", img.size, img.rgb)
+        return img_pil
 
-        # Lưu kích thước gốc
-        original_width, original_height = img_pil.size
 
-        new_size = (int(img_pil.width * 0.7), int(img_pil.height * 0.7))
-        img_pil = img_pil.resize(new_size, Image.Resampling.LANCZOS)
-
-        buffer = io.BytesIO()
-
-        img_pil.save(buffer, format="JPEG", quality=75, optimize=True)
-        return buffer.getvalue(), original_width, original_height
+def monitor_resources():
+    cpu_usage = psutil.cpu_percent(interval=1)
+    ram = psutil.virtual_memory()
+    ram_usage = ram.percent
+    return cpu_usage, ram_usage
