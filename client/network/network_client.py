@@ -117,7 +117,6 @@ class NetworkClient:
             except Exception as e:
                 if isinstance(e, OSError) and (e.errno == 9 or e.errno == 10038):
                     break
-
                 logger.error(f"Error receiving data from server - {e}")
                 self.disconnect()
 

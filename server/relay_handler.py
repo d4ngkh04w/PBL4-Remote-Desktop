@@ -5,6 +5,7 @@ from typing import Dict, Callable
 import socket
 import ssl
 import os
+import threading
 
 from common.packet import (
     Packet,
@@ -25,43 +26,63 @@ logger = logging.getLogger(__name__)
 
 
 class RelayHandler:
-    _thread_pool = ThreadPoolExecutor(
+    __thread_pool = ThreadPoolExecutor(
         max_workers=min((os.cpu_count() or 4) * 2, 16),
         thread_name_prefix="RelayHandler",
     )
-    _packet_handlers: Dict[type, Callable] = {}
-    _shutdown_called = False
-
-    @classmethod
-    def _initialize_handlers(cls):
-        """Khởi tạo mapping giữa packet types và handlers"""
-        if not cls._packet_handlers:
-            cls._packet_handlers = {
-                RequestConnectionPacket: cls._relay_request_connection,
-                RequestPasswordPacket: cls._relay_request_password,
-                SendPasswordPacket: cls._relay_send_password,
-                AuthenticationResultPacket: cls._handle_authentication_result,
-                ImagePacket: cls._relay_image_packet,
-                ImageChunkPacket: cls._relay_image_packet,
-            }
+    __packet_handlers: Dict[type, Callable] = {}
+    __shutdown_event = threading.Event()
 
     @staticmethod
     def relay_packet(packet: Packet, sender_socket: socket.socket | ssl.SSLSocket):
         """Xử lý và chuyển tiếp gói tin sử dụng thread pool"""
         try:
-            RelayHandler._thread_pool.submit(
-                RelayHandler._process_packet, packet, sender_socket
+            if RelayHandler.__shutdown_event.is_set():
+                logger.warning("Server is shutting down. Dropping packet.")
+                return
+
+            RelayHandler.__thread_pool.submit(
+                RelayHandler.__process_packet, packet, sender_socket
             )
+        except RuntimeError as e:
+            if RelayHandler.__shutdown_event.is_set():
+                logger.warning("Packet submitted during shutdown. Dropping.")
+            else:
+                raise e
+
+    @classmethod
+    def shutdown(cls):
+        """Dọn dẹp tài nguyên khi shutdown server"""
+        if cls.__shutdown_event.is_set():
+            return
+
+        cls.__shutdown_event.set()
+        try:
+            cls.__thread_pool.shutdown(wait=True)
+            logger.info("RelayHandler shutdown completed")
         except Exception as e:
-            logger.error(f"Failed to submit packet for processing: {e}")
+            logger.error(f"Error during RelayHandler shutdown: {e}")
+
+    @classmethod
+    def __initialize_handlers(cls):
+        """Khởi tạo mapping giữa packet types và handlers"""
+        if not cls.__packet_handlers:
+            cls.__packet_handlers = {
+                RequestConnectionPacket: cls.__relay_request_connection,
+                RequestPasswordPacket: cls.__relay_request_password,
+                SendPasswordPacket: cls.__relay_send_password,
+                AuthenticationResultPacket: cls.__handle_authentication_result,
+                ImagePacket: cls.__relay_image_packet,
+                ImageChunkPacket: cls.__relay_image_packet,
+            }
 
     @staticmethod
-    def _process_packet(packet: Packet, sender_socket: socket.socket | ssl.SSLSocket):
+    def __process_packet(packet: Packet, sender_socket: socket.socket | ssl.SSLSocket):
         try:
-            RelayHandler._initialize_handlers()
+            RelayHandler.__initialize_handlers()
 
             packet_type = type(packet)
-            handler = RelayHandler._packet_handlers.get(packet_type)
+            handler = RelayHandler.__packet_handlers.get(packet_type)
 
             if handler:
                 if isinstance(
@@ -75,24 +96,11 @@ class RelayHandler:
                 logger.warning(
                     f"Unknown packet type: {packet.packet_type} or sender not found"
                 )
-        except Exception as e:
-            logger.error(f"Failed to submit packet for processing: {e}")
-
-    @classmethod
-    def shutdown(cls):
-        """Dọn dẹp tài nguyên khi shutdown server"""
-        if cls._shutdown_called:
-            return
-
-        cls._shutdown_called = True
-        try:
-            cls._thread_pool.shutdown(wait=True)
-            logger.info("RelayHandler thread pool shutdown completed")
-        except Exception as e:
-            logger.error(f"Error during RelayHandler shutdown: {e}")
+        except Exception:
+            raise
 
     @staticmethod
-    def _relay_request_connection(
+    def __relay_request_connection(
         packet: RequestConnectionPacket,
     ):
         """Chuyển tiếp RequestConnectionPacket"""
@@ -117,7 +125,7 @@ class RelayHandler:
                 host_queue.put(packet)
 
     @staticmethod
-    def _relay_request_password(
+    def __relay_request_password(
         packet: RequestPasswordPacket,
     ):
         """Chuyển tiếp RequestPasswordPacket - Host yêu cầu password từ controller"""
@@ -140,7 +148,7 @@ class RelayHandler:
                 controller_queue.put(packet)
 
     @staticmethod
-    def _relay_send_password(
+    def __relay_send_password(
         packet: SendPasswordPacket,
     ):
         """Chuyển tiếp SendPasswordPacket - Controller gửi password đến host"""
@@ -163,7 +171,7 @@ class RelayHandler:
                 host_queue.put(packet)
 
     @staticmethod
-    def _handle_authentication_result(
+    def __handle_authentication_result(
         packet: AuthenticationResultPacket,
     ):
         """Chuyển tiếp AuthenticationResultPacket - Host gửi kết quả xác thực đến controller"""
@@ -246,7 +254,7 @@ class RelayHandler:
                 )
 
     @staticmethod
-    def _relay_image_packet(
+    def __relay_image_packet(
         packet: ImagePacket | ImageChunkPacket,
         host_socket: socket.socket | ssl.SSLSocket,
     ):

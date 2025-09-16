@@ -1,5 +1,4 @@
 from typing import Union
-import lz4.frame as lz4
 
 from common.enum import (
     PacketType,

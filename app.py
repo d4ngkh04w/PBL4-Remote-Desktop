@@ -4,11 +4,22 @@ import time
 
 from common.logger import setup_logger
 from options import parse_args
-from common.utils import monitor_resources
+from common.utils import get_resource_usage
 
 args = parse_args()
 logger = setup_logger(is_client=args.client, debug=args.debug)
 
+banner = r"""
+    ____                       __          ____            __   __            
+   / __ \___  ____ ___  ____  / /____     / __ \___  _____/ /__/ /_____  ____ 
+  / /_/ / _ \/ __ `__ \/ __ \/ __/ _ \   / / / / _ \/ ___/ //_/ __/ __ \/ __ \
+ / _, _/  __/ / / / / / /_/ / /_/  __/  / /_/ /  __(__  ) ,< / /_/ /_/ / /_/ /
+/_/ |_|\___/_/ /_/ /_/\____/\__/\___/  /_____/\___/____/_/|_|\__/\____/ .___/ 
+                                                                     /_/      
+                                                    Remote Desktop Application
+"""
+
+print(banner)
 
 if args.client:
     from client import client
@@ -39,6 +50,7 @@ elif args.server:
     server = None
     server_thread = None
     monitor_thread = None
+    stop_event = threading.Event()
     try:
         logger.info("Starting server...")
         server = Server(
@@ -47,25 +59,27 @@ elif args.server:
             cert_file=args.cert,
             key_file=args.key,
             use_ssl=args.ssl,
+            max_clients=args.max_clients,
         )
 
         server_thread = threading.Thread(target=server.start, daemon=True)
         server_thread.start()
 
+        last_cpu, last_ram = -1, -1
+
         def resource_monitor():
-            while server and server.is_listening:
-                cpu_usage, ram_usage = monitor_resources()
+            global last_cpu, last_ram
+            while not stop_event.is_set():
+                cpu_usage, ram_usage = get_resource_usage()
                 if cpu_usage > 80 or ram_usage > 80:
                     logger.warning(
                         f"High resource usage detected - CPU: {cpu_usage}%, RAM: {ram_usage}%"
                     )
                 else:
-                    logger.debug(f"CPU Usage: {cpu_usage}%, RAM Usage: {ram_usage}%")
-
-            logger.debug("Resource monitor stopped.")
-
-        while not server.is_listening:
-            time.sleep(0.1)
+                    if abs(cpu_usage - last_cpu) > 5 or abs(ram_usage - last_ram) > 5:
+                        logger.debug(f"CPU Usage: {cpu_usage}%, RAM: {ram_usage}%")
+                last_cpu, last_ram = cpu_usage, ram_usage
+                stop_event.wait(timeout=10)
 
         monitor_thread = threading.Thread(target=resource_monitor, daemon=True)
         monitor_thread.start()
@@ -82,8 +96,9 @@ elif args.server:
         if server_thread:
             server_thread.join(timeout=5)
         if monitor_thread:
-            monitor_thread.join(timeout=5)
-
+            stop_event.set()
+            monitor_thread.join()
+            logger.info("Resource monitor stopped")
         sys.exit(0)
     except Exception as e:
         logger.error(f"Failed to start server: {e}")

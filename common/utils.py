@@ -52,7 +52,7 @@ def capture_screen() -> Image.Image:
         return img_pil
 
 
-def monitor_resources():
+def get_resource_usage():
     cpu_usage = psutil.cpu_percent(interval=1)
     ram = psutil.virtual_memory()
     ram_usage = ram.percent

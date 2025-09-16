@@ -3,6 +3,9 @@ import ssl
 import threading
 from typing import Optional, Union, TypedDict
 from queue import Queue
+import logging
+
+logger = logging.getLogger(__name__)
 
 ClientInfo = TypedDict(
     "ClientInfo",
@@ -18,7 +21,7 @@ ClientInfo = TypedDict(
 
 class ClientManager:
     __active_clients: dict[str, ClientInfo] = {}
-    _lock = threading.Lock()
+    __lock = threading.Lock()
 
     @classmethod
     def add_client(
@@ -27,7 +30,7 @@ class ClientManager:
         client_id: str,
         client_ip: str,
     ):
-        with cls._lock:
+        with cls.__lock:
             cls.__active_clients[client_id] = ClientInfo(
                 socket=client_socket,
                 ip=client_ip,
@@ -38,19 +41,28 @@ class ClientManager:
 
     @classmethod
     def remove_client(cls, client_id: str) -> None:
-        with cls._lock:
+        with cls.__lock:
             if client_id in cls.__active_clients:
-                del cls.__active_clients[client_id]
+                client_info = cls.__active_clients.pop(client_id)
+                if not client_info["queue"].empty():
+                    logger.warning(
+                        f"Client {client_id} disconnected. Discarding {client_info['queue'].qsize()} unsent packets"
+                    )
+                    client_info["queue"].queue.clear()
+                try:
+                    client_info["socket"].close()
+                except Exception:
+                    logger.error(f"Error closing socket for client {client_id}")
 
     @classmethod
     def update_client_status(cls, client_id: str, status: str) -> None:
-        with cls._lock:
+        with cls.__lock:
             if client_id in cls.__active_clients:
                 cls.__active_clients[client_id]["status"] = status
 
     @classmethod
     def get_client_info(cls, client: str | socket.socket | ssl.SSLSocket):
-        with cls._lock:
+        with cls.__lock:
             if isinstance(client, str):
                 return cls.__active_clients.get(client)
             elif isinstance(client, (socket.socket, ssl.SSLSocket)):
@@ -61,7 +73,7 @@ class ClientManager:
 
     @classmethod
     def get_client_socket(cls, client_id: str) -> socket.socket | ssl.SSLSocket | None:
-        with cls._lock:
+        with cls.__lock:
             client_info = cls.__active_clients.get(client_id)
             if client_info:
                 socket_obj = client_info.get("socket")
@@ -71,11 +83,40 @@ class ClientManager:
 
     @classmethod
     def get_client_queue(cls, client_id: str) -> Optional[Queue]:
-        with cls._lock:
+        with cls.__lock:
             client_info = cls.__active_clients.get(client_id)
             return client_info["queue"] if client_info else None
 
     @classmethod
     def is_client_online(cls, client_id: str) -> bool:
-        with cls._lock:
+        with cls.__lock:
             return cls.__active_clients.get(client_id, {}).get("status") == "ONLINE"
+
+    @classmethod
+    def get_client_count(cls) -> int:
+        with cls.__lock:
+            return len(cls.__active_clients)
+
+    @classmethod
+    def shutdown(cls):
+        with cls.__lock:
+            client_ids = list(cls.__active_clients.keys())
+            for client_id in client_ids:
+                info = cls.__active_clients.pop(client_id, None)
+
+                if info and not info["queue"].empty():
+                    logger.warning(
+                        f"Shutting down. Discarding {info['queue'].qsize()} unsent packets for client {client_id}"
+                    )
+                    info["queue"].queue.clear()
+
+                try:
+                    if info and info["socket"]:
+                        info["socket"].shutdown(socket.SHUT_RDWR)
+                        info["socket"].close()
+                except Exception as e:
+                    logger.error(
+                        f"Error shutting down socket for client {client_id}: {e}"
+                    )
+
+            logger.info("All clients cleared")

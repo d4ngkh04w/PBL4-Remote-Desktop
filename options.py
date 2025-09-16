@@ -53,6 +53,14 @@ def get_parser():
         metavar="FPS",
         help="Screen sharing frame rate (default: 20 FPS)",
     )
+    general.add_argument(
+        "-mc",
+        "--max-clients",
+        type=int,
+        default=10,
+        metavar="MAX_CLIENTS",
+        help="Maximum number of concurrent clients (server only, default: 10)",
+    )
 
     security = parser.add_argument_group("Security Options")
     security.add_argument(
@@ -61,6 +69,7 @@ def get_parser():
         help="Enable SSL/TLS encryption for communication (default: False)",
     )
     security.add_argument(
+        "-crt",
         "--cert",
         type=str,
         default=None,
@@ -68,6 +77,7 @@ def get_parser():
         help="Path to SSL certificate file (required if --ssl is set)",
     )
     security.add_argument(
+        "-k",
         "--key",
         type=str,
         default=None,

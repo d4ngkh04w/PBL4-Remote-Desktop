@@ -4,7 +4,7 @@ import ssl
 import threading
 import logging
 
-from common.packet import AssignIdPacket
+from common.packet import AssignIdPacket, ResponseConnectionPacket
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
 from server.client_manager import ClientManager
@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class Server:
-    def __init__(self, host, port, use_ssl, cert_file, key_file):
+    def __init__(self, host, port, use_ssl, cert_file, key_file, max_clients):
         self.host = host
         self.port = port
         self.socket = None
-        self.is_listening = False
+        self.shutdown_event = threading.Event()
         self.use_ssl = use_ssl
         self.cert_file = cert_file
         self.key_file = key_file
-        self._stop_called = False
+        self.client_semaphore = threading.Semaphore(max_clients)
 
     def start(self):
         plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -49,10 +49,23 @@ class Server:
 
             SessionManager.start_cleanup()
 
-            while self.is_listening:
+            while not self.shutdown_event.is_set():
                 self.socket.settimeout(0.5)
                 try:
                     client_socket, addr = self.socket.accept()
+
+                    if not self.client_semaphore.acquire(blocking=False):
+                        logger.warning(
+                            f"Max clients reached. Rejecting connection from {addr}"
+                        )
+                        rejection_packet = ResponseConnectionPacket(
+                            success=False,
+                            message="Server is currently full. Please try again later",
+                        )
+                        Protocol.send_packet(client_socket, rejection_packet)
+                        client_socket.close()
+                        continue
+
                     client_id = generate_numeric_id(9)
 
                     packet = AssignIdPacket(client_id=client_id)
@@ -61,7 +74,7 @@ class Server:
 
                     client_handler = threading.Thread(
                         target=self.handle_client,
-                        args=(client_socket, client_id, addr),
+                        args=(client_socket, client_id, addr, self.client_semaphore),
                         daemon=True,
                     )
                     client_handler.start()
@@ -84,24 +97,27 @@ class Server:
         except Exception as e:
             logger.error(f"Unexpected error in server: {e}")
             raise
-        finally:
-            self.stop()
 
     def stop(self):
-        if self._stop_called:
+        if self.shutdown_event.is_set():
             return
 
-        self._stop_called = True
-        self.is_listening = False
+        self.shutdown_event.set()
+
         if self.socket:
             try:
                 self.socket.close()
+                self.socket = None
             except Exception:
-                pass
+                logger.error("Error closing server socket")
         try:
             RelayHandler.shutdown()
+            SessionManager.shutdown()
+            ClientManager.shutdown()
         except Exception as e:
             logger.error(f"Error shutting down RelayHandler: {e}")
+
+        logger.info("Server shutdown complete")
 
     def receive(self):
         if not self.socket:
@@ -126,9 +142,9 @@ class Server:
         if not send_queue:
             return
 
-        while self.is_listening:
+        while not self.shutdown_event.is_set():
             try:
-                packet = send_queue.get(timeout=None)
+                packet = send_queue.get(timeout=1)
                 Protocol.send_packet(client_socket, packet)
                 send_queue.task_done()
             except queue.Empty:
@@ -143,6 +159,7 @@ class Server:
         client_socket: ssl.SSLSocket | socket.socket,
         client_id: str,
         client_addr: str,
+        client_semaphore: threading.Semaphore,
     ):
         """Main handler loop cho client"""
         try:
@@ -154,7 +171,7 @@ class Server:
             )
             sender_thread.start()
 
-            while True:
+            while not self.shutdown_event.is_set():
                 packet = Protocol.receive_packet(client_socket)
                 if not packet:
                     break
@@ -171,4 +188,5 @@ class Server:
             if session_id:
                 SessionManager.end_session(session_id)
             ClientManager.remove_client(client_id)
+            client_semaphore.release()
             logger.info(f"Client {client_id} disconnected from {client_addr}")
