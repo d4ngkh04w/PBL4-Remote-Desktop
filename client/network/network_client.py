@@ -13,7 +13,7 @@ from common.packet import (
     RequestPasswordPacket,
     SendPasswordPacket,
     AuthenticationResultPacket,
-    ImageChunkPacket,
+    FrameUpdatePacket,
 )
 from common.protocol import Protocol
 from typing import Callable, Optional, Any
@@ -83,7 +83,7 @@ class NetworkClient:
             RequestPasswordPacket,
             AuthenticationResultPacket,
             SendPasswordPacket,
-            ImageChunkPacket,
+            FrameUpdatePacket,
         ],
     ):
         """Gửi packet đến server"""

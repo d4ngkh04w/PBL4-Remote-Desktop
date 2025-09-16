@@ -1,8 +1,12 @@
 import logging
+import os
+import zlib
 import lz4.frame as lz4
 import threading
 import time
 import io
+from typing import Dict, Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal
@@ -16,7 +20,7 @@ from common.packet import (
     SendPasswordPacket,
     AuthenticationResultPacket,
     ImagePacket,
-    ImageChunkPacket,
+    FrameUpdatePacket,
     AssignIdPacket,
     SessionPacket,
 )
@@ -26,10 +30,23 @@ from common.utils import unformat_numeric_id, format_numeric_id
 from common.enum import SessionAction
 from client.network.network_client import NetworkClient
 
-# from client.gui.main_window import MainWindow
-
 
 logger = logging.getLogger(__name__)
+
+
+def _compress_block_task(block_data_tuple) -> tuple[int, int, int, int, bytes] | None:
+    current_block, x, y = block_data_tuple
+    try:
+        block_height, block_width, _ = current_block.shape
+        block_pil = Image.fromarray(current_block)
+        buffer = io.BytesIO()
+
+        block_pil.save(buffer, format="JPEG", quality=75, optimize=True)
+
+        compressed_data = lz4.compress(buffer.getvalue())
+        return (x, y, block_width, block_height, compressed_data)
+    except Exception:
+        return None
 
 
 class MainWindowController(QObject):
@@ -103,33 +120,32 @@ class MainWindowController(QObject):
     # ====== MESSAGE HANDLING ======
     def handle_server_message(self, packet: Packet):
         """Xử lý tin nhắn từ server - phân chia theo loại packet"""
-        match packet:
-            case AssignIdPacket():
-                self.handle_host_assign_id(packet)
-            case AuthenticationResultPacket():
-                self.handle_controller_auth_response(packet)
-            case RequestConnectionPacket():
-                self.handle_host_connection_request(packet)
-            case RequestPasswordPacket():
-                self.handle_controller_password_request(packet)
-            case SendPasswordPacket():
-                self.handle_host_receive_password(packet)
-            case SessionPacket():
-                logger.debug(f"Handling SessionPacket: {packet}")
-                self.handle_session_packet(packet)
-            case ImagePacket():
-                if self.role == "controller" and hasattr(
-                    self.main_window, "remote_widget"
-                ):
-                    self.main_window.remote_widget.handle_full_image_packet(packet)
+        PACKET_HANDLERS: Dict[type, Callable] = {
+            AssignIdPacket: self.handle_host_assign_id,
+            AuthenticationResultPacket: self.handle_controller_auth_response,
+            RequestConnectionPacket: self.handle_host_connection_request,
+            RequestPasswordPacket: self.handle_controller_password_request,
+            SendPasswordPacket: self.handle_host_receive_password,
+            SessionPacket: self.handle_session_packet,
+            ImagePacket: lambda p: (
+                self.main_window.remote_widget.handle_full_image_packet(p)
+                if self.role == "controller"
+                and hasattr(self.main_window, "remote_widget")
+                else None
+            ),
+            FrameUpdatePacket: lambda p: (
+                self.main_window.remote_widget.handle_frame_update_packet(p)
+                if self.role == "controller"
+                and hasattr(self.main_window, "remote_widget")
+                else None
+            ),
+        }
 
-            case ImageChunkPacket():  # Xử lý packet mới
-                if self.role == "controller" and hasattr(
-                    self.main_window, "remote_widget"
-                ):
-                    self.main_window.remote_widget.handle_image_chunk_packet(packet)
-            case _:
-                logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
+        handler = PACKET_HANDLERS.get(type(packet))
+        if handler:
+            handler(packet)
+        else:
+            logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
 
     # ====== HOST LOGIC ======
     def handle_host_assign_id(self, packet: AssignIdPacket):
@@ -341,9 +357,7 @@ class MainWindowController(QObject):
 
     def _screen_sharing_worker(self):
         """Worker thread chụp và gửi màn hình"""
-        frame_delay = 1.0 / self.target_fps
-        previous_frame = None
-
+        # Gửi ảnh màn hình ban đầu
         try:
             img_pil = capture_screen()
             original_width, original_height = img_pil.size
@@ -356,18 +370,30 @@ class MainWindowController(QObject):
                 original_width=original_width,
                 original_height=original_height,
             )
+
             self.network_client.send(initial_packet)
             previous_frame = np.array(img_pil)
         except Exception as e:
             logger.error(f"Error sending initial screen: {e}")
             self.session_active = False
 
-        BLOCK_SIZE = 16384
+        frame_delay = 1.0 / self.target_fps
+        previous_frame = None
+        previous_hashes = None
+
+        num_workers = min(8, (os.cpu_count() or 1) + 1)
+        compression_pool = ThreadPoolExecutor(
+            max_workers=num_workers, thread_name_prefix="Compression"
+        )
+
+        BLOCK_SIZE = 64
 
         while self.session_active and self.role == "host":
             frame_start = time.time()
             try:
                 current_frame_pil = capture_screen()
+                if current_frame_pil is None:
+                    continue
                 current_frame_np = np.array(current_frame_pil)
 
                 if previous_frame is None:
@@ -375,38 +401,45 @@ class MainWindowController(QObject):
 
                 height, width, _ = current_frame_np.shape
 
-                for y in range(0, height, BLOCK_SIZE):
-                    for x in range(0, width, BLOCK_SIZE):
-                        # Lấy ra block từ ảnh cũ và ảnh mới
+                # Khởi tạo hoặc kiểm tra kích thước bảng hash
+                grid_height = (height + BLOCK_SIZE - 1) // BLOCK_SIZE
+                grid_width = (width + BLOCK_SIZE - 1) // BLOCK_SIZE
+                if previous_hashes is None or previous_hashes.shape != (
+                    grid_height,
+                    grid_width,
+                ):
+                    previous_hashes = np.zeros(
+                        (grid_height, grid_width), dtype=np.uint32
+                    )
+                compression_tasks = []
+                for y_idx, y in enumerate(range(0, height, BLOCK_SIZE)):
+                    for x_idx, x in enumerate(range(0, width, BLOCK_SIZE)):
                         current_block = current_frame_np[
                             y : y + BLOCK_SIZE, x : x + BLOCK_SIZE
                         ]
-                        previous_block = previous_frame[
-                            y : y + BLOCK_SIZE, x : x + BLOCK_SIZE
-                        ]
 
-                        # So sánh 2 block bằng numpy
-                        if not np.array_equal(current_block, previous_block):
-                            # Nếu khác nhau, gửi block này đi
-                            block_height, block_width, _ = current_block.shape
+                        current_hash = zlib.crc32(current_block.tobytes())
 
-                            # Chuyển block numpy trở lại ảnh PIL để nén và gửi
-                            block_pil = Image.fromarray(current_block)
-                            buffer = io.BytesIO()
-                            block_pil.save(
-                                buffer, format="JPEG", quality=75, optimize=True
-                            )
+                        # So sánh hash (nếu khác thì block đã thay đổi)
+                        if current_hash != previous_hashes[y_idx, x_idx]:
+                            compression_tasks.append((current_block, x, y))
 
-                            chunk_packet = ImageChunkPacket(
-                                image_data=lz4.compress(buffer.getvalue()),
-                                x=x,
-                                y=y,
-                                width=block_width,
-                                height=block_height,
-                            )
-                            self.network_client.send(chunk_packet)
+                            # Cập nhật lại hash mới vào bảng
+                            previous_hashes[y_idx, x_idx] = current_hash
 
-                previous_frame = current_frame_np
+                if compression_tasks:
+                    # Gửi các task vào pool để nén song song
+                    # map() sẽ trả về kết quả theo đúng thứ tự
+                    future_results = compression_pool.map(
+                        _compress_block_task, compression_tasks
+                    )
+                    # Lọc bỏ các kết quả None (nếu có lỗi)
+                    changed_chunks = [
+                        result for result in future_results if result is not None
+                    ]
+                    if changed_chunks:
+                        frame_update_packet = FrameUpdatePacket(changed_chunks)
+                        self.network_client.send(frame_update_packet)
 
             except Exception as e:
                 logger.error(f"Error in screen sharing worker: {e}")
@@ -416,38 +449,8 @@ class MainWindowController(QObject):
             sleep_time = max(0, frame_delay - frame_time)
             if sleep_time > 0:
                 time.sleep(sleep_time)
-        # frame_delay = 1.0 / self.target_fps
 
-        # while self.session_active and self.role == "host":
-        #     frame_start = time.time()
-        #     try:
-        #         # Kiểm tra session_id có tồn tại không
-        #         if not self.network_client.session_id:
-        #             logger.warning("No session_id available, skipping frame")
-        #             time.sleep(0.1)
-        #             continue
-
-        #         # Chụp màn hình
-        #         img_data, original_width, original_height = capture_screen()
-        #         if img_data:
-        #             # Tạo và gửi ImagePacket với thông tin kích thước gốc
-        #             image_packet = ImagePacket(
-        #                 image_data=lz4.compress(img_data),
-        #                 original_width=original_width,
-        #                 original_height=original_height,
-        #             )
-        #             self.network_client.send(image_packet)
-
-        #     except Exception as e:
-        #         logger.error(f"Error capturing/sending screen: {e}")
-        #         time.sleep(1)  # Đợi trước khi thử lại
-        #         continue
-
-        #     # Tính toán thời gian delay để duy trì FPS
-        #     frame_time = time.time() - frame_start
-        #     sleep_time = max(0, frame_delay - frame_time)
-        #     if sleep_time > 0:
-        #         time.sleep(sleep_time)
+        compression_pool.shutdown()
 
     # ====== CONNECTION SUCCESS/FAILURE ======
     def on_connection_successful_ui(self):

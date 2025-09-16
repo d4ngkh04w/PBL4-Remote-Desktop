@@ -93,6 +93,11 @@ class ClientManager:
             return cls.__active_clients.get(client_id, {}).get("status") == "ONLINE"
 
     @classmethod
+    def is_client_exist(cls, client_id: str) -> bool:
+        with cls.__lock:
+            return client_id in cls.__active_clients
+
+    @classmethod
     def get_client_count(cls) -> int:
         with cls.__lock:
             return len(cls.__active_clients)

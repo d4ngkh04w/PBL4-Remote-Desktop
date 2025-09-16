@@ -15,7 +15,7 @@ from common.packet import (
     ResponseConnectionPacket,
     AuthenticationResultPacket,
     ImagePacket,
-    ImageChunkPacket,
+    FrameUpdatePacket,
     SessionPacket,
     SessionAction,
 )
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class RelayHandler:
     __thread_pool = ThreadPoolExecutor(
-        max_workers=min((os.cpu_count() or 4) * 2, 16),
+        max_workers=min((os.cpu_count() or 4) * 4, 30),
         thread_name_prefix="RelayHandler",
     )
     __packet_handlers: Dict[type, Callable] = {}
@@ -72,12 +72,20 @@ class RelayHandler:
                 RequestPasswordPacket: cls.__relay_request_password,
                 SendPasswordPacket: cls.__relay_send_password,
                 AuthenticationResultPacket: cls.__handle_authentication_result,
-                ImagePacket: cls.__relay_image_packet,
-                ImageChunkPacket: cls.__relay_image_packet,
+                ImagePacket: cls.__relay_stream_packet,
+                FrameUpdatePacket: cls.__relay_stream_packet,
             }
 
     @staticmethod
     def __process_packet(packet: Packet, sender_socket: socket.socket | ssl.SSLSocket):
+        sender_info = ClientManager.get_client_info(sender_socket)
+        if not sender_info:
+            logger.warning(
+                "Could not find sender info for the socket. Dropping packet."
+            )
+            return
+
+        sender_id = sender_info["id"]
         try:
             RelayHandler.__initialize_handlers()
 
@@ -87,9 +95,9 @@ class RelayHandler:
             if handler:
                 if isinstance(
                     packet,
-                    (ImageChunkPacket, ImagePacket),
+                    (ImagePacket, FrameUpdatePacket),
                 ):
-                    handler(packet, sender_socket)
+                    handler(packet, sender_id)
                 else:
                     handler(packet)
             else:
@@ -254,18 +262,11 @@ class RelayHandler:
                 )
 
     @staticmethod
-    def __relay_image_packet(
-        packet: ImagePacket | ImageChunkPacket,
-        host_socket: socket.socket | ssl.SSLSocket,
+    def __relay_stream_packet(
+        packet: ImagePacket | FrameUpdatePacket,
+        host_id: str,
     ):
-        """Chuyển tiếp các gói tin stream (ImagePacket, ImageChunkPacket) từ host đến controller"""
-        host_info = ClientManager.get_client_info(host_socket)
-        if host_info is None:
-            logger.warning(f"Host socket not found in client manager")
-            return
-
-        host_id = host_info["id"]
-        host_queue = ClientManager.get_client_queue(host_id)
+        """Chuyển tiếp các gói tin stream từ host đến controller"""
 
         session_id, session_info = SessionManager.get_client_sessions(host_id)
         if not session_info or not session_id:
@@ -294,6 +295,7 @@ class RelayHandler:
                 f"One of the clients is no longer in session, ending session {session_id}"
             )
             SessionManager.end_session(session_id)
+            host_queue = ClientManager.get_client_queue(host_id)
             if host_queue:
                 host_queue.put(session_packet)
             if controller_queue:

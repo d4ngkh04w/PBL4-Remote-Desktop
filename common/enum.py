@@ -36,7 +36,7 @@ class PacketType(Enum):
     """
 
     IMAGE = 1
-    IMAGE_CHUNK = 2
+    FRAME_UPDATE = 2
     KEYBOARD = 3
     MOUSE = 4
     ASSIGN_ID = 5

@@ -142,7 +142,7 @@ class Server:
         if not send_queue:
             return
 
-        while not self.shutdown_event.is_set():
+        while ClientManager.is_client_exist(client_id):
             try:
                 packet = send_queue.get(timeout=1)
                 Protocol.send_packet(client_socket, packet)
@@ -152,7 +152,7 @@ class Server:
             except Exception:
                 break
 
-        logger.debug(f"Sender worker for client {client_id} stopped")
+        logger.info(f"Sender worker for client {client_id} stopped")
 
     def handle_client(
         self,

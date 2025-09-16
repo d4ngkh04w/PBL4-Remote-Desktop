@@ -1,7 +1,12 @@
 import secrets
-import mss
 from PIL import Image
 import psutil
+import sys
+
+if sys.platform == "linux":
+    import mss
+else:
+    from PIL import ImageGrab
 
 
 def generate_numeric_id(num_digits: int = 9) -> str:
@@ -45,11 +50,15 @@ def unformat_numeric_id(formatted_id: str) -> str:
 
 def capture_screen() -> Image.Image:
     """Capture screen và trả về đối tượng PIL Image"""
-    with mss.mss(with_cursor=True) as sct:
-        monitor = sct.monitors[1]
-        img = sct.grab(monitor)
-        img_pil = Image.frombytes("RGB", img.size, img.rgb)
-        return img_pil
+    if sys.platform == "win32":
+        img = ImageGrab.grab(all_screens=True)
+        return img
+    elif sys.platform == "linux":
+        with mss.mss() as sct:
+            monitor = sct.monitors[1]
+            img = sct.grab(monitor)
+            img_pil = Image.frombytes("RGB", img.size, img.rgb)
+            return img_pil
 
 
 def get_resource_usage():

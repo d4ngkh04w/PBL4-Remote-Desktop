@@ -42,28 +42,22 @@ class ImagePacket(BasePacket):
         return f"ImagePacket(type={self.packet_type}, size={len(self.image_data)}, original={self.original_width}x{self.original_height})"
 
 
-class ImageChunkPacket(BasePacket):
+class FrameUpdatePacket(BasePacket):
     """
-    Gói tin chứa một phần của ảnh đã thay đổi
+    Gói tin chứa tất cả các chunk đã thay đổi của một khung hình
     """
 
-    def __init__(
-        self,
-        image_data: bytes,
-        x: int,
-        y: int,
-        width: int,
-        height: int,
-    ):
-        super().__init__(PacketType.IMAGE_CHUNK)
-        self.image_data = image_data
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
+    def __init__(self, chunks: list):
+        super().__init__(PacketType.FRAME_UPDATE)
+
+        # chunks là một danh sách các tuple chứa thông tin của mỗi chunk.
+        # Cấu trúc tuple: (x, y, width, height, image_data_compressed)
+        self.chunks = chunks
 
     def __repr__(self):
-        return f"ImageChunkPacket(type={self.packet_type}, pos=({self.x},{self.y}), size={self.width}x{self.height})"
+        return (
+            f"FrameUpdatePacket(type={self.packet_type}, num_chunks={len(self.chunks)})"
+        )
 
 
 class KeyBoardPacket(BasePacket):
@@ -207,7 +201,7 @@ class SessionPacket(BasePacket):
 
 Packet = Union[
     ImagePacket,
-    ImageChunkPacket,
+    FrameUpdatePacket,
     KeyBoardPacket,
     MousePacket,
     AssignIdPacket,
