@@ -1,10 +1,10 @@
 import logging
-import threading
 from PyQt5.QtWidgets import QApplication
 from client.gui.main_window import MainWindow
 from client.service.auth_service import AuthService
 from client.service.connection_service import ConnectionService
 from client.core.event_bus import EventBus
+import sys
 
 
 

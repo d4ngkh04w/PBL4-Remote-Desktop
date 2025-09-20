@@ -72,7 +72,9 @@ class ClientManager:
         return None
 
     @classmethod
-    def get_client_socket(cls, client_id: str) -> socket.socket | ssl.SSLSocket | None:
+    def get_client_socket(
+        cls, client_id: str
+    ) -> Optional[Union[socket.socket, ssl.SSLSocket]]:
         with cls.__lock:
             client_info = cls.__active_clients.get(client_id)
             if client_info:

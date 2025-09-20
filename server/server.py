@@ -5,6 +5,7 @@ import threading
 import logging
 
 from common.packet import AssignIdPacket, ResponseConnectionPacket
+from common.enum import ConnectionStatus
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
 from server.client_manager import ClientManager
@@ -59,7 +60,7 @@ class Server:
                             f"Max clients reached. Rejecting connection from {addr}"
                         )
                         rejection_packet = ResponseConnectionPacket(
-                            success=False,
+                            connection_status=ConnectionStatus.REJECTED,
                             message="Server is currently full. Please try again later",
                         )
                         Protocol.send_packet(client_socket, rejection_packet)
@@ -171,7 +172,7 @@ class Server:
             )
             sender_thread.start()
 
-            while not self.shutdown_event.is_set():
+            while ClientManager.is_client_exist(client_id):
                 packet = Protocol.receive_packet(client_socket)
                 if not packet:
                     break

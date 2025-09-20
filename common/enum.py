@@ -10,14 +10,25 @@ class KeyBoardEventType(Enum):
     RELEASE = 2
 
 
+class KeyBoardType(Enum):
+    """
+    Enum các loại phím
+    """
+
+    KEY = 1  # Các phím đặc biệt như Ctrl, Shift, Alt, F1-F12, ...
+    KEYCODE = 2  # Các phím ký tự như a, b, 1, 2, ...
+
+
 class MouseEventType(Enum):
     """
     Enum các sự kiện chuột
     """
 
     MOVE = 1
-    CLICK = 2
-    SCROLL = 3
+    PRESS = 2  # Khi nhấn chuột xuống
+    RELEASE = 3  # Khi nhả chuột ra
+    SCROLL = 4
+    # DOUBLE_CLICK = 5
 
 
 class MouseButton(Enum):
@@ -28,6 +39,7 @@ class MouseButton(Enum):
     LEFT = 1
     RIGHT = 2
     MIDDLE = 3
+    UNKNOWN = 4
 
 
 class PacketType(Enum):
@@ -97,3 +109,21 @@ class EventType(Enum):
 
 
     
+class ConnectionStatus(Enum):
+    """
+    Enum trạng thái kết nối
+    """
+
+    SUCCESS = 1
+    FAILED = 2
+    REJECTED = 3
+    SESSION_EXPIRED = 4
+
+
+class AuthenticationResult(Enum):
+    """
+    Enum kết quả xác thực
+    """
+
+    SUCCESS = 1
+    FAILED = 2

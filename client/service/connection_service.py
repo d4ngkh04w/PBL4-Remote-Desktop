@@ -187,7 +187,7 @@ class ConnectionService:
             return
 
         logger.info("Received password_request from host %s",
-                   packet.host_id, packet.controller_id)
+                   packet.host_id)
         
         if not cls._socket_client or not cls._socket_client.running:
             logger.error("Not connected to server")

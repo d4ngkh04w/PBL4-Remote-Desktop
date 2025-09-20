@@ -2,14 +2,30 @@ import io
 import pickle
 from typing import Type
 
-from common.packet import Packet, PacketType, SessionAction
+from common.packet import Packet
+from common.enum import (
+    PacketType,
+    SessionAction,
+    KeyBoardType,
+    KeyBoardEventType,
+    MouseEventType,
+    MouseButton,
+    ConnectionStatus,
+    AuthenticationResult,
+)
 
 
 class SafeDeserializer:
 
-    ALLOWED_PACKET_CLASSES = {cls.__name__: cls for cls in Packet.__args__}
-    ALLOWED_PACKET_CLASSES["PacketType"] = PacketType
-    ALLOWED_PACKET_CLASSES["SessionAction"] = SessionAction
+    ALLOWED_CLASSES = {cls.__name__: cls for cls in Packet.__args__}
+    ALLOWED_CLASSES[PacketType.__name__] = PacketType
+    ALLOWED_CLASSES[SessionAction.__name__] = SessionAction
+    ALLOWED_CLASSES[KeyBoardType.__name__] = KeyBoardType
+    ALLOWED_CLASSES[KeyBoardEventType.__name__] = KeyBoardEventType
+    ALLOWED_CLASSES[MouseEventType.__name__] = MouseEventType
+    ALLOWED_CLASSES[MouseButton.__name__] = MouseButton
+    ALLOWED_CLASSES[ConnectionStatus.__name__] = ConnectionStatus
+    ALLOWED_CLASSES[AuthenticationResult.__name__] = AuthenticationResult
 
     class SafeUnpickler(pickle.Unpickler):
         def __init__(self, file, allowed_classes: dict[str, Type]):
@@ -33,7 +49,7 @@ class SafeDeserializer:
         Deserializes data with whitelist protection
         """
         try:
-            unpickler = cls.SafeUnpickler(io.BytesIO(data), cls.ALLOWED_PACKET_CLASSES)
+            unpickler = cls.SafeUnpickler(io.BytesIO(data), cls.ALLOWED_CLASSES)
             packet = unpickler.load()
         except (pickle.PickleError, pickle.UnpicklingError, EOFError) as e:
             raise ValueError(f"Failed to deserialize packet: {e}")

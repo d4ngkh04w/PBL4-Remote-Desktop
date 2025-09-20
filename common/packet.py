@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional, Union
 
 from common.enum import (
     PacketType,
@@ -6,6 +6,9 @@ from common.enum import (
     MouseEventType,
     MouseButton,
     SessionAction,
+    KeyBoardType,
+    ConnectionStatus,
+    AuthenticationResult,
 )
 
 
@@ -65,13 +68,23 @@ class KeyBoardPacket(BasePacket):
     Gói tin bàn phím
     """
 
-    def __init__(self, event_type: KeyBoardEventType, key_code: int):
+    def __init__(
+        self,
+        event_type: KeyBoardEventType,
+        key_type: KeyBoardType,
+        key_name: Optional[
+            str
+        ] = None,  # Tên của phím đặc biệt, ví dụ: 'ctrl_l', 'shift'
+        key_vk: Optional[int] = None,  # Mã phím ảo (Virtual-key code) của phím ký tự
+    ):
         super().__init__(PacketType.KEYBOARD)
         self.event_type = event_type
-        self.key_code = key_code
+        self.key_type = key_type
+        self.key_name = key_name
+        self.key_vk = key_vk
 
     def __repr__(self):
-        return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_code={self.key_code})"
+        return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_type={self.key_type}, key_name={self.key_name}, key_vk={self.key_vk})"
 
 
 class MousePacket(BasePacket):
@@ -82,16 +95,18 @@ class MousePacket(BasePacket):
     def __init__(
         self,
         event_type: MouseEventType,
-        button: MouseButton,
         position: tuple[int, int],
+        button: MouseButton = MouseButton.UNKNOWN,
+        scroll_delta: tuple[int, int] = (0, 0),
     ):
         super().__init__(PacketType.MOUSE)
         self.event_type = event_type
         self.button = button
         self.position = position
+        self.scroll_delta = scroll_delta
 
     def __repr__(self):
-        return f"MousePacket(type={self.packet_type}, event_type={self.event_type}, button={self.button}, position={self.position})"
+        return f"MousePacket(type={self.packet_type}, event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
 class AssignIdPacket(BasePacket):
@@ -123,21 +138,16 @@ class RequestConnectionPacket(BasePacket):
 
 class ResponseConnectionPacket(BasePacket):
     """
-    Phản hồi kết nối\n
-    Ví dụ:\n
-        {"success": true, "message": "Host is ready"}
-        {"success": false, "message": "Host rejected connection"}
-        {"success": false, "message": "Host not found"}
-        {"success": false, "message": "Invalid password"}
+    Phản hồi kết nối
     """
 
-    def __init__(self, success: bool, message: str):
+    def __init__(self, connection_status: ConnectionStatus, message: str):
         super().__init__(PacketType.RESPONSE_CONNECTION)
-        self.success = success
+        self.connection_status = connection_status
         self.message = message
 
     def __repr__(self):
-        return f"ResponseConnectionPacket(type={self.packet_type}, success={self.success}, message={self.message})"
+        return f"ResponseConnectionPacket(type={self.packet_type}, connection_status={self.connection_status}, message={self.message})"
 
 
 class SendPasswordPacket(BasePacket):
