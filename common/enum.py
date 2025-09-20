@@ -61,3 +61,39 @@ class SessionAction(Enum):
     ENDED = 2
     ERROR = 3
     TIMEOUT = 4
+
+
+class EventType(Enum):
+    """
+    Enum các loại sự kiện
+    """
+
+    # Startup events
+    CREATE_PASSWORD = 0 # đã xử lí
+
+    # Connection with server events
+    NETWORK_CONNECTED = 1 # đã xử lí
+    NETWORK_DISCONNECTED = 2 # đã xử lí
+    NETWORK_CONNECTION_FAILED = 3 # đã xử lí
+    NETWORK_RECONNECTING = 4 # chưa xử lí
+
+    # Remote desktop events
+    # Host 
+    CONNECTED_TO_CONTROLLER = 16 # chưa xử lí
+    # Controller 
+    CONNECTED_TO_HOST = 17 # chưa xử lí
+    RECEIVE_IMAGE = 14
+    RECEIVE_FRAME_UPDATE = 15
+    # UI events
+    UI_UPDATE_STATUS = 20 # đã xử lí
+    UI_SHOW_NOTIFICATION = 21 # đã xử lí
+    UI_SHOW_CLIENT_ID = 22 # đã xử lí
+    UI_REQUEST_HOST_PASSWORD = 23 # đã xử lí
+
+    # Authentication events   
+    VERIFY_PASSWORD = 32 # đã xử lí
+    PASSWORD_CORRECT = 33 # đã xử lí
+    PASSWORD_INCORRECT = 34 # đã xử lí
+
+
+    

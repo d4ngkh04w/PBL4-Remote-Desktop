@@ -1,9 +1,0 @@
-mss==10.1.0
-Pillow==11.3.0
-pynput==1.8.1
-lz4==4.4.4
-bcrypt==4.3.0
-psutil==7.0.0
-PyQt5==5.15.11
-numpy==2.2.6
-colorama==0.4.6

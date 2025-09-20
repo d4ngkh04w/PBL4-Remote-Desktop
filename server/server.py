@@ -152,7 +152,7 @@ class Server:
             except Exception:
                 break
 
-        logger.info(f"Sender worker for client {client_id} stopped")
+        logger.debug(f"Sender worker for client {client_id} stopped")
 
     def handle_client(
         self,

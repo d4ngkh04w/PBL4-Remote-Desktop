@@ -37,7 +37,7 @@ if args.client:
         )
         client_instance.run()
     except KeyboardInterrupt:
-        logger.info("Client stopped by user")
+        logger.debug("Client stopped by user")
         if client_instance:
             client_instance.shutdown()
     except Exception as e:
@@ -90,7 +90,7 @@ elif args.server:
         monitor_thread.join()
 
     except KeyboardInterrupt:
-        logger.info("Server stopped by user")
+        logger.debug("Server stopped by user")
         if server:
             server.stop()
         if server_thread:
@@ -98,7 +98,7 @@ elif args.server:
         if monitor_thread:
             stop_event.set()
             monitor_thread.join()
-            logger.info("Resource monitor stopped")
+            logger.debug("Resource monitor stopped")
         sys.exit(0)
     except Exception as e:
         logger.error(f"Failed to start server: {e}")

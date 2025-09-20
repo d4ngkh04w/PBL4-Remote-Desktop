@@ -146,7 +146,7 @@ class SendPasswordPacket(BasePacket):
     """
 
     def __init__(self, host_id: str, controller_id: str, password: str):
-        super().__init__(PacketType.AUTHENTICATION_RESPONSE)
+        super().__init__(PacketType.SEND_PASSWORD)
         self.host_id = host_id
         self.controller_id = controller_id
         self.password = password

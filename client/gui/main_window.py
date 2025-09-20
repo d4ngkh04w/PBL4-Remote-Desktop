@@ -1,3 +1,12 @@
+"""
+Main window for client-new architecture.
+Updated to use EventBus and new controller/service architecture.
+"""
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -13,45 +22,54 @@ from PyQt5.QtWidgets import (
     QApplication,
 )
 from PyQt5.QtCore import Qt
-from client.network.network_client import NetworkClient
+
 from client.controllers.main_window_controller import MainWindowController
-from common.password_manager import PasswordManager
-from common.utils import unformat_numeric_id
+from client.service.auth_service import AuthService
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, server_host, server_port, use_ssl, cert_file, fps=30):
+    """
+    Main window for the client-new application.
+    
+    Responsibilities:
+    - Create and layout UI components
+    - Handle basic UI events
+    - Delegate business logic to MainWindowController
+    - Display information from services via controller
+    """
+    
+    def __init__(self):
         super().__init__()
-
-        # Initialize components
-        self.network_client = NetworkClient(
-            server_host, server_port, use_ssl, cert_file
-        )
-        self.remote_widget = None
-        self.fps = fps  # Lưu FPS config
-
-        # Generate password tự động khi khởi tạo
-        self.my_password = PasswordManager.generate_password(6)  # 6 ký tự cho dễ nhớ
-        self.my_id = None
-
-        # Track cleanup state to avoid double cleanup
-        self._cleanup_done = False
-
+        
         # UI components that need to be accessed later
         self.id_display = None
         self.password_display = None
         self.connect_btn = None
+
         self.host_id_input = None
         self.host_pass_input = None
-
+        
+        self.tabs = None
+        self.status_bar = None
+        self.remote_widget = None
+        
+        # Track cleanup state
+        self._cleanup_done = False
+        
         # Initialize controller for business logic
-        self.controller = MainWindowController(self, self.network_client, self.fps)
-
-        # Setup
+        self.controller = MainWindowController(self)
+        
+        # Setup UI
         self.init_ui()
-        self.setup_connections()
-
-        # Kết nối server sau khi UI đã được khởi tạo hoàn chỉnh
+        
+        # Start controller after UI is ready
+        self.controller.start()
+        
+        # Initialize password display
+        if self.password_display:
+            self.password_display.setText(AuthService.get_current_password())
+        
+        # Connect to server after everything is ready
         self.controller.connect_to_server()
 
     def init_ui(self):
@@ -99,7 +117,9 @@ class MainWindow(QMainWindow):
             self.status_bar = QStatusBar()
             self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Initializing...")
-
+        
+        # Connect to server will be done after UI is fully initialized
+    
     def create_host_tab(self):
         """Tab hiển thị ID của mình"""
         host_widget = QWidget()
@@ -139,13 +159,8 @@ class MainWindow(QMainWindow):
             """
             QLabel {
                 font-size: 28px;
-                font-size: 28px;
                 font-weight: bold;
                 color: #0066cc;
-                background-color: #f8f9fa;
-                border: 2px dashed #0066cc;
-                border-radius: 8px;
-                padding: 15px;
                 background-color: #f8f9fa;
                 border: 2px dashed #0066cc;
                 border-radius: 8px;
@@ -177,21 +192,14 @@ class MainWindow(QMainWindow):
         )
         pass_layout = QVBoxLayout(pass_group)
 
-        self.password_display = QLabel(
-            self.my_password
-        )  # Hiển thị password đã generate
+        self.password_display = QLabel("Loading...")
         self.password_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.password_display.setStyleSheet(
             """
             QLabel {
                 font-size: 22px;
-                font-size: 22px;
                 font-weight: bold;
                 color: #009900;
-                background-color: #f8fff8;
-                border: 2px dashed #009900;
-                border-radius: 8px;
-                padding: 12px;
                 background-color: #f8fff8;
                 border: 2px dashed #009900;
                 border-radius: 8px;
@@ -227,12 +235,12 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        self.refresh_btn.clicked.connect(self.refresh_password)
+        self.refresh_btn.clicked.connect(self.controller.refresh_password)
 
         copy_id_btn = QPushButton("📋 Copy ID")
         copy_id_btn.setMinimumHeight(40)
         copy_id_btn.setStyleSheet(self.refresh_btn.styleSheet())
-        copy_id_btn.clicked.connect(self.copy_id)
+        copy_id_btn.clicked.connect(self.copy_id_to_clipboard)
 
         copy_pass_btn = QPushButton("📋 Copy Password")
         copy_pass_btn.setMinimumHeight(40)
@@ -246,7 +254,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(host_widget, "🏠 Your ID")
-
+    
     def create_controller_tab(self):
         """Tab kết nối đến partner"""
         controller_widget = QWidget()
@@ -303,7 +311,7 @@ class MainWindow(QMainWindow):
         # Password Input
         self.host_pass_input = QLineEdit()
         self.host_pass_input.setPlaceholderText("Enter Password")
-        self.host_pass_input.setEchoMode(QLineEdit.Password)
+        self.host_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.host_pass_input.setStyleSheet(self.host_id_input.styleSheet())
         connect_layout.addRow("Password:", self.host_pass_input)
 
@@ -334,114 +342,60 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        self.connect_btn.clicked.connect(self.connect_to_host)
+        self.connect_btn.clicked.connect(self.handle_connect_click)
         layout.addWidget(self.connect_btn)
-
-        # Test Button - chỉ để test UI RemoteWidget
-        self.test_ui_btn = QPushButton("🎨 Test Remote UI")
-        self.test_ui_btn.setMinimumHeight(40)
-        self.test_ui_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #17a2b8;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px;
-            }
-            QPushButton:hover {
-                background-color: #138496;
-            }
-            QPushButton:pressed {
-                background-color: #117a8b;
-            }
-        """
-        )
-        self.test_ui_btn.clicked.connect(self.test_remote_ui)
-        layout.addWidget(self.test_ui_btn)
 
         layout.addStretch()
         self.tabs.addTab(controller_widget, "🎮 Control Host")
-
-    def setup_connections(self):
-        """Thiết lập kết nối signals - chỉ UI signals"""
-        # Enable Enter key for connection
-        if self.host_pass_input is not None:
-            self.host_pass_input.returnPressed.connect(self.connect_to_host)
-
-    # ====== UI EVENT HANDLERS - delegate to controller ======
-    def connect_to_host(self):
-        """UI Event: Kết nối đến host"""
+    
+    def handle_connect_click(self):
+        """Handle connect button click"""
         host_id = self.host_id_input.text().strip()
-        password = self.host_pass_input.text().strip()
-        self.controller.handle_controller_connect(host_id, password)
+        host_pass = self.host_pass_input.text().strip()
+        self.controller.connect_to_partner(host_id, host_pass)
 
-    def refresh_password(self):
-        """UI Event: Làm mới password"""
-        self.controller.refresh_password()
-
-    def copy_id(self):
-        """UI Event: Copy ID to clipboard"""
+    def copy_id_to_clipboard(self):
+        """Copy ID to clipboard"""
         if (
             self.id_display
             and self.id_display.text()
             and self.id_display.text() != "Connecting..."
+            and self.id_display.text() != "Connection Failed"
         ):
             clipboard = QApplication.clipboard()
+            # Remove formatting from ID before copying
+            from common.utils import unformat_numeric_id
             clipboard.setText(unformat_numeric_id(self.id_display.text()))
-            if self.status_bar:
-                self.status_bar.showMessage("ID copied to clipboard", 2000)
-
+            self.status_bar.showMessage("ID copied to clipboard!", 2000)
+    
     def copy_password(self):
-        """UI Event: Copy password to clipboard"""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(self.my_password)
-        if self.status_bar:
-            self.status_bar.showMessage("Password copied to clipboard", 2000)
-
-    def test_remote_ui(self):
-        """Test function: Show RemoteWidget UI without real connection"""
-        try:
-            from client.gui.remote_widget import RemoteWidget
-
-            # Tạo RemoteWidget với network_client dummy (None) và parent đúng
-            self.remote_widget = RemoteWidget(None, self)
-
-            # Connect disconnect signal
-            self.remote_widget.disconnect_requested.connect(self.close_test_remote_ui)
-
-            # Thêm tab mới
-            tab_index = self.tabs.addTab(self.remote_widget, "🎨 Test Remote UI")
-            self.tabs.setCurrentIndex(tab_index)
-
-            self.status_bar.showMessage("Remote UI test opened", 3000)
-
-        except Exception as e:
-            self.status_bar.showMessage(f"Error opening test UI: {str(e)}", 5000)
-
-    def close_test_remote_ui(self):
-        """Close test remote UI"""
-        if hasattr(self, "remote_widget") and self.remote_widget:
-            # Tìm và remove tab
-            for i in range(self.tabs.count()):
-                if self.tabs.widget(i) == self.remote_widget:
-                    self.tabs.removeTab(i)
-                    break
-
-            # Cleanup
-            self.remote_widget.cleanup()
-            self.remote_widget = None
-            self.status_bar.showMessage("Test UI closed", 2000)
-
+        """Copy password to clipboard"""      
+        if AuthService:
+            password = AuthService.get_current_password()
+            clipboard = QApplication.clipboard()
+            clipboard.setText(password)
+            self.status_bar.showMessage("Password copied to clipboard!", 2000)
+    
+    def closeEvent(self, event):
+        """Handle window close event"""
+        if not self._cleanup_done:
+            self.cleanup()
+        event.accept()
+    
     def cleanup(self):
-        """Dọn dẹp tài nguyên"""
-        self.controller.cleanup()
-
-    def closeEvent(self, a0):
-        """Xử lý sự kiện đóng ứng dụng"""
-        self.cleanup()
-        if a0:
-            a0.accept()  # Chấp nhận sự kiện đóng
-        super().closeEvent(a0)
+        """Clean up resources when closing"""
+        if self._cleanup_done:
+            return
+            
+        try:
+            self._cleanup_done = True
+            
+            if self.controller:
+                self.controller.cleanup()
+            
+            if self.remote_widget:
+                if hasattr(self.remote_widget, 'cleanup'):
+                    self.remote_widget.cleanup()
+                    
+        except Exception as e:
+            print(f"Error during cleanup: {e}")

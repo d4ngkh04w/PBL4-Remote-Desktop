@@ -1,102 +1,328 @@
 import logging
-import os
-import zlib
-import lz4.frame as lz4
-import threading
-import time
-import io
-from typing import Dict, Callable
-from concurrent.futures import ThreadPoolExecutor
-
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal
-import numpy as np
-from PIL import Image
 
-from common.packet import (
-    Packet,
-    RequestConnectionPacket,
-    RequestPasswordPacket,
-    SendPasswordPacket,
-    AuthenticationResultPacket,
-    ImagePacket,
-    FrameUpdatePacket,
-    AssignIdPacket,
-    SessionPacket,
-)
-from common.password_manager import PasswordManager
-from common.utils import capture_screen
-from common.utils import unformat_numeric_id, format_numeric_id
-from common.enum import SessionAction
-from client.network.network_client import NetworkClient
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from client.core.event_bus import EventBus
+from client.service.auth_service import get_auth_service
+from common.utils import format_numeric_id
+from common.enum import EventType
+
+from client.service.connection_service import ConnectionService
 
 logger = logging.getLogger(__name__)
 
 
-def _compress_block_task(block_data_tuple) -> tuple[int, int, int, int, bytes] | None:
-    current_block, x, y = block_data_tuple
-    try:
-        block_height, block_width, _ = current_block.shape
-        block_pil = Image.fromarray(current_block)
-        buffer = io.BytesIO()
-
-        block_pil.save(buffer, format="JPEG", quality=75, optimize=True)
-
-        compressed_data = lz4.compress(buffer.getvalue())
-        return (x, y, block_width, block_height, compressed_data)
-    except Exception:
-        return None
-
-
 class MainWindowController(QObject):
     """
-    Controller xử lý logic business cho MainWindow.
-    Tách biệt hoàn toàn khỏi UI để dễ test và maintain.
+    Main window controller focused on UI coordination.
+    
+    Responsibilities:
+    - Handle UI events and user interactions
+    - Subscribe to EventBus for service updates
+    - Coordinate between UI and services
+    - Manage UI state changes
+    - Show dialogs and messages
     """
 
-    # Signals để giao tiếp với main thread
-    connection_request_received = pyqtSignal(str, str)  # controller_id, host_id
-    connection_successful = pyqtSignal()  # Kết nối thành công
-    connection_failed = pyqtSignal(str)  # Kết nối thất bại
-
-    def __init__(self, main_window, network_client: NetworkClient, fps: int = 30):
+    
+    
+    # Signals for UI updates (run in main thread)
+    update_status = pyqtSignal(str, str)  # message, type
+    update_id_display = pyqtSignal(str)  # client_id
+    show_connection_request = pyqtSignal(str, str, str)  # controller_id, host_id, formatted_id
+    show_connection_result = pyqtSignal(bool, str)  # success, message
+    enable_tabs = pyqtSignal(bool)  # enable controller tab
+    
+    def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.network_client = network_client
-        self.target_fps = fps
+        self._running = False
 
-        # Session state
-        self.role = None
-        self.session_active = False
-        self.screen_sharing_thread = None
+        self.host_pass: str = None  # Store host password for connection requests
 
-        # Setup network message handler
-        self.network_client.on_message_received = self.handle_server_message
-
-        # Connect signals to slots in main thread
-        self.connection_request_received.connect(self.show_connection_request_dialog)
-        self.connection_successful.connect(self.on_connection_successful_ui)
-        self.connection_failed.connect(self.show_connection_failed)
-
+        # Connect internal signals to UI methods
+        self.update_status.connect(self._update_status_ui)
+        self.update_id_display.connect(self._update_id_display_ui)
+        self.show_connection_request.connect(self._show_connection_request_dialog)
+        self.show_connection_result.connect(self._show_connection_result_ui)
+        self.enable_tabs.connect(self._enable_tabs_ui)      
+    
+    def start(self):
+        """Start the controller and subscribe to events"""
+        if self._running:
+            return
+            
+        self._running = True
+        
+        # Subscribe to EventBus events
+        EventBus.subscribe(EventType.UI_UPDATE_STATUS.name, self._on_ui_update_status)
+        EventBus.subscribe(EventType.UI_SHOW_NOTIFICATION.name, self._on_ui_show_notification)
+        EventBus.subscribe(EventType.UI_SHOW_CLIENT_ID.name, self._on_client_id_received)
+        EventBus.subscribe(EventType.UI_REQUEST_HOST_PASSWORD.name, self._on_request_host_password)
+        EventBus.subscribe(EventType.NETWORK_CONNECTED.name, self._on_connection_established)
+        EventBus.subscribe(EventType.NETWORK_CONNECTION_FAILED.name, self._on_connection_failed)
+        EventBus.subscribe(EventType.NETWORK_DISCONNECTED.name, self._on_connection_lost)
+        
+        logger.info("MainWindowController started")
+    
+    def stop(self):
+        """Stop the controller"""
+        if not self._running:
+            return
+            
+        self._running = False
+        logger.info("MainWindowController stopped")
+    
+    # ====== USER ACTIONS ======
+    
     def connect_to_server(self):
-        """Kết nối đến server để nhận ID"""
-        try:
-            if self.network_client.connect():
-                self.main_window.status_bar.showMessage(
-                    "Connected to server, waiting for ID..."
-                )
-                logger.info("Connected to server, waiting for ID assignment")
+        """Handle connect to server button click"""
+        success = ConnectionService.connect_to_server()
+        if not success:
+            self.update_status.emit("Failed to connect to server", "error")        
+    
+    def  _on_client_id_received(self, data):
+        """Handle client ID received from server"""       
+        if isinstance(data, dict):            
+            client_id = data.get('client_id')
+            if client_id:                
+                self.update_id_display.emit(format_numeric_id(client_id))
+                self.enable_tabs.emit(True)
             else:
-                self.main_window.status_bar.showMessage("Failed to connect to server")
-                self.show_connection_error()
-        except Exception as e:
-            logger.error(f"Error connecting to server: {e}")
-            self.show_connection_error()
+                logger.error("No client_id found in data: %s", data)
+        else:
+            logger.error("Expected dict but got: %s", type(data)) 
 
-    def show_connection_error(self):
-        """Hiển thị lỗi kết nối server"""
-        if self.main_window.id_display:
+    def connect_to_partner(self, host_id: str, host_pass: str):
+        """Handle connect to partner request"""
+        # Validation
+        if not host_id:
+            QMessageBox.warning(
+                self.main_window,
+                "Input Error",
+                "Please enter Host ID"
+            )
+            return
+            
+        if len(host_id) != 9 or not host_id.isdigit():
+            QMessageBox.warning(
+                self.main_window,
+                "Invalid ID", 
+                "Host ID must be exactly 9 digits"
+            )
+            return
+        
+        if not host_pass:
+            QMessageBox.warning(
+                self.main_window,
+                "Input Error",
+                "Please enter Host Password"
+            )
+            return
+       
+        
+        # Update UI state
+        if hasattr(self.main_window, 'connect_btn'):
+            self.main_window.connect_btn.setEnabled(False)
+            self.main_window.connect_btn.setText("🔄 Connecting...")
+        
+        # Send connection request using ConnectionService
+        success = ConnectionService.send_connection_request(host_id)
+        if not success:
+            self.reset_connect_button()
+            QMessageBox.critical(
+                self.main_window,
+                "Connection Error",
+                "Failed to send connection request"
+            )
+
+    def disconnect_from_partner(self):
+        """Handle disconnect from partner"""
+        # Close remote desktop widget if open
+        if hasattr(self.main_window, 'remote_widget') and self.main_window.remote_widget:
+            self._close_remote_desktop()
+        
+        # Reset UI
+        self.reset_connect_button()
+        self.update_status.emit("Disconnected from partner", "info")
+        
+        logger.info("Disconnected from partner")\
+        
+    def refresh_password(self):
+        """Generate new password"""
+        auth_service = get_auth_service()
+        if auth_service:
+            new_password = auth_service.generate_new_password()
+            
+            # Update UI
+            if hasattr(self.main_window, 'password_display'):
+                self.main_window.password_display.setText(new_password)
+            
+            self.update_status.emit("Password refreshed", "info")
+            logger.info("Password refreshed")
+
+    # ====== HOST ACTIONS ======
+
+    def accept_connection_request(self, controller_id: str, host_id: str):
+        """Accept incoming connection request"""
+        # Publish acceptance event
+        
+    
+    def reject_connection_request(self, controller_id: str, host_id: str):
+        """Reject incoming connection request"""
+        # Publish rejection event
+        EventBus.publish(EventType.REFUSE_CONNECTION.name, {            
+        }, source="MainWindowController")  
+
+    # ====== CLIENT ACTIONS ====== 
+    
+    # ====== EVENT HANDLERS ======        
+    
+    def _on_connection_established(self, data):
+        """Handle connection established"""
+        self.update_status.emit("Connected to server", "success")
+    
+    def _on_connection_failed(self, data):
+        """Handle connection failed"""
+        self.update_status.emit("Failed to connect to server", "error")
+        self._show_connection_error()
+    
+    def _on_connection_lost(self, data):
+        """Handle connection lost"""
+        self.update_status.emit("Connection lost", "warning")
+        self.reset_connect_button()
+    
+    def _on_ui_update_status(self, data):
+        """Handle UI status update requests"""
+        if isinstance(data, dict):
+            message = data.get('message', '')
+            status_type = data.get('type', 'info')
+            self.update_status.emit(message, status_type)
+    
+    def _on_ui_show_notification(self, data):
+        """Handle UI notification display requests"""
+        if isinstance(data, dict):
+            controller_id = str(data.get('controller_id', ''))
+            host_id = str(data.get('host_id', ''))
+            formatted_id = data.get('formatted_controller_id', controller_id)
+            self.show_connection_request.emit(controller_id, host_id, formatted_id)
+    
+    def _on_request_host_password(self, data):
+        """Handle request for host password from ConnectionService"""
+        if isinstance(data, dict):
+            controller_id = data.get('controller_id')
+            host_id = data.get('host_id')
+            
+            # Get password from UI input
+            if hasattr(self.main_window, 'host_pass_input'):
+                password = self.main_window.host_pass_input.text().strip()
+                
+                # Send password back to ConnectionService
+                EventBus.publish("SEND_HOST_PASSWORD", {
+                    "controller_id": controller_id,
+                    "host_id": host_id,
+                    "password": password
+                }, source="MainWindowController")
+            else:
+                logger.error("No host_pass_input found in main_window")
+    
+    def _on_session_start(self, data):
+        """Handle session start"""
+        # Assume controller role if we have session data
+        self._create_remote_desktop_widget()
+        self.update_status.emit("✅ Connected - Remote desktop active", "success")
+    
+    def _on_session_end(self, data):
+        """Handle session end"""
+        self._close_remote_desktop()
+        self.reset_connect_button()
+        self.update_status.emit("Session ended", "info")
+    
+    def _on_ui_show_message(self, data):
+        """Handle UI message display requests"""
+        if isinstance(data, dict):
+            message_type = data.get('type')
+            
+            if message_type == 'connection_request':
+                controller_id = str(data.get('controller_id', ''))
+                host_id = str(data.get('host_id', ''))
+                formatted_id = data.get('formatted_controller_id', controller_id)
+                self.show_connection_request.emit(controller_id, host_id, formatted_id)
+    
+    # ====== UI UPDATE METHODS (THREAD-SAFE) ======
+    
+    def _update_status_ui(self, message: str, status_type: str):
+        """Update status bar in main thread"""
+        if hasattr(self.main_window, 'status_bar'):
+            self.main_window.status_bar.showMessage(message)
+        elif hasattr(self.main_window, 'statusBar'):
+            self.main_window.statusBar().showMessage(message)
+    
+    def _update_id_display_ui(self, client_id: str):
+        """Update ID display in main thread"""
+        logger.debug("_update_id_display_ui called with client_id: %s", client_id)
+        if hasattr(self.main_window, 'id_display'):
+            self.main_window.id_display.setText(client_id)
+            logger.debug("ID display updated to: %s", client_id)
+            # Keep the original styling (don't clear it)
+            self.main_window.id_display.setStyleSheet(
+                """
+                QLabel {
+                    font-size: 28px;
+                    font-weight: bold;
+                    color: #0066cc;
+                    background-color: #f8f9fa;
+                    border: 2px dashed #0066cc;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 5px;
+                }
+                """
+            )
+        else:
+            logger.error("main_window does not have id_display attribute")
+    
+    def _show_connection_request_dialog(self, controller_id: str, host_id: str, formatted_id: str):
+        """Show connection request dialog in main thread"""
+        reply = QMessageBox.question(
+            self.main_window,
+            "Connection Request",
+            f"Controller with ID {formatted_id} wants to connect. Accept?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            ConnectionService._accept_connection_request(controller_id, host_id)
+        else:
+            ConnectionService._reject_connection_request(controller_id, host_id)
+    
+    def _show_connection_result_ui(self, success: bool, message: str):
+        """Show connection result in main thread"""
+        if success:
+            # Success will be handled by session start event
+            pass
+        else:
+            self.reset_connect_button()
+            QMessageBox.critical(
+                self.main_window,
+                "Connection Failed",
+                f"Failed to connect to partner:\n{message}"
+            )
+    
+    def _enable_tabs_ui(self, enable: bool):
+        """Enable/disable tabs in main thread"""
+        if hasattr(self.main_window, 'tabs'):
+            # Enable controller tab (usually index 1)
+            self.main_window.tabs.setTabEnabled(1, enable)
+    
+    def _show_connection_error(self):
+        """Show connection error in UI"""
+        if hasattr(self.main_window, 'id_display'):
             self.main_window.id_display.setText("Connection Failed")
             self.main_window.id_display.setStyleSheet(
                 """
@@ -110,455 +336,87 @@ class MainWindowController(QObject):
                     padding: 15px;
                     margin: 5px;
                 }
-            """
+                """
             )
-        # Disable controller tab if connection failed
-        self.main_window.tabs.setTabEnabled(1, False)
-        if self.main_window.password_display:
-            self.main_window.password_display.setText(self.main_window.my_password)
-
-    # ====== MESSAGE HANDLING ======
-    def handle_server_message(self, packet: Packet):
-        """Xử lý tin nhắn từ server - phân chia theo loại packet"""
-        PACKET_HANDLERS: Dict[type, Callable] = {
-            AssignIdPacket: self.handle_host_assign_id,
-            AuthenticationResultPacket: self.handle_controller_auth_response,
-            RequestConnectionPacket: self.handle_host_connection_request,
-            RequestPasswordPacket: self.handle_controller_password_request,
-            SendPasswordPacket: self.handle_host_receive_password,
-            SessionPacket: self.handle_session_packet,
-            ImagePacket: lambda p: (
-                self.main_window.remote_widget.handle_full_image_packet(p)
-                if self.role == "controller"
-                and hasattr(self.main_window, "remote_widget")
-                else None
-            ),
-            FrameUpdatePacket: lambda p: (
-                self.main_window.remote_widget.handle_frame_update_packet(p)
-                if self.role == "controller"
-                and hasattr(self.main_window, "remote_widget")
-                else None
-            ),
-        }
-
-        handler = PACKET_HANDLERS.get(type(packet))
-        if handler:
-            handler(packet)
-        else:
-            logger.warning(f"Unknown packet type: {packet.__class__.__name__}")
-
-    # ====== HOST LOGIC ======
-    def handle_host_assign_id(self, packet: AssignIdPacket):
-        """Host: Nhận ID từ server"""
-        if hasattr(packet, "client_id"):
-            if self.main_window.id_display:
-                self.main_window.id_display.setText(format_numeric_id(packet.client_id))
-            if self.main_window.status_bar:
-                self.main_window.status_bar.showMessage(
-                    "Ready - ID received from server"
-                )
-            self.main_window.my_id = packet.client_id
-            logger.debug(f"Received ID: {packet.client_id}")
-            # Enable controller tab when connected
-            self.main_window.tabs.setTabEnabled(1, True)
-
-    def handle_host_connection_request(self, packet: RequestConnectionPacket):
-        """Host: Xử lý yêu cầu kết nối từ controller"""
-        if hasattr(packet, "controller_id") and hasattr(packet, "host_id"):
-            host_id = unformat_numeric_id(packet.host_id)
-            controller_id = unformat_numeric_id(packet.controller_id)
-            logger.debug(f"Received connection request from: {controller_id}")
-
-            # Emit signal để main thread hiển thị dialog
-            self.connection_request_received.emit(str(controller_id), str(host_id))
-
-    def show_connection_request_dialog(self, controller_id_str, host_id_str):
-        """Hiển thị dialog trong main thread"""
-        controller_id = unformat_numeric_id(controller_id_str)
-        host_id = unformat_numeric_id(host_id_str)
-
-        # Hiển thị hộp thoại chấp nhận hoặc từ chối kết nối
-        reply = QMessageBox.question(
-            self.main_window,
-            "Connection Request",
-            f"Controller with ID {format_numeric_id(controller_id)} wants to connect. Accept?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-
-        if reply == QMessageBox.Yes:
-            # Gửi yêu cầu xác thực
-            accept_connection_packet = RequestPasswordPacket(controller_id, host_id)
-            self.network_client.send(accept_connection_packet)
-            logger.info(f"Connection accepted for controller: {controller_id}")
-        else:
-            # Gửi phản hồi từ chối kết nối
-            auth_packet = AuthenticationResultPacket(
-                controller_id=controller_id,
-                host_id=self.main_window.my_id,
-                success=False,
-                message="Connection refused by user",
-            )
-            self.network_client.send(auth_packet)
-            logger.info(f"Connection refused by user for controller: {controller_id}")
-
-    def handle_host_receive_password(self, packet: SendPasswordPacket):
-        """Host: Nhận và xác thực password từ controller"""
-        if hasattr(packet, "password") and hasattr(packet, "controller_id"):
-            received_password = packet.password
-            controller_id = unformat_numeric_id(packet.controller_id)
-            logger.debug(f"Received password from controller: {received_password}")
-
-            # Xác thực password
-            if received_password == self.main_window.my_password:
-                auth_result_packet = AuthenticationResultPacket(
-                    controller_id=controller_id,
-                    host_id=self.main_window.my_id,
-                    success=True,
-                    message="Authentication successful",
-                )
-                self.network_client.send(auth_result_packet)
-                logger.debug("Password correct, authentication successful")
-            else:
-                auth_result_packet = AuthenticationResultPacket(
-                    controller_id=controller_id,
-                    host_id=self.main_window.my_id,
-                    success=False,
-                    message="Incorrect password",
-                )
-                self.network_client.send(auth_result_packet)
-                logger.debug("Password incorrect, authentication failed")
-
-    # ====== CONTROLLER LOGIC ======
-    def handle_controller_connect(self, host_id, password):
-        """Controller: Gửi yêu cầu kết nối tới host"""
-        # Validation
-        if not host_id or not password:
-            QMessageBox.warning(
-                self.main_window,
-                "Input Error",
-                "Please enter both Host ID and Password",
-            )
-            return
-        if len(host_id) != 9 or not host_id.isdigit():
-            QMessageBox.warning(
-                self.main_window, "Invalid ID", "Host ID must be exactly 9 digits"
-            )
-            return
-
-        # Disable button during connection
-        self.main_window.connect_btn.setEnabled(False)
-        self.main_window.connect_btn.setText("🔄 Connecting...")
-
+        self.enable_tabs.emit(False)
+    
+    def _create_remote_desktop_widget(self):
+        """Create remote desktop widget for controller"""
         try:
-            # Set role as controller when sending connection request
-            self.role = "controller"
-            logger.info("Role set to CONTROLLER (screen viewer)")
+            # Import RemoteWidget
+            from gui.remote_widget import RemoteWidget
 
-            connect_packet = RequestConnectionPacket(host_id, self.main_window.my_id)
-            self.network_client.send(connect_packet)
-            self.main_window.status_bar.showMessage(f"Connecting to Host ID: {host_id}")
-            logger.info(f"Connection request sent for host: {host_id}")
-        except Exception as e:
-            logger.error(f"Error sending connect request: {e}")
-            self.reset_connect_button()
-            QMessageBox.critical(
-                self.main_window,
-                "Connection Error",
-                f"Failed to send connection request: {str(e)}",
-            )
+            self.main_window.remote_widget = RemoteWidget(self.main_window)
 
-    def handle_controller_password_request(self, packet: RequestPasswordPacket):
-        """Controller: Gửi password khi host yêu cầu"""
-        if hasattr(packet, "host_id") and hasattr(packet, "controller_id"):
-            host_id = packet.host_id
-            controller_id = packet.controller_id
-            logger.info(f"Received password request from host: {host_id}")
-
-            # Gửi password đã nhập
-            entered_password = self.main_window.host_pass_input.text().strip()
-            logger.debug(f"Entered password: {entered_password}")
-            password_packet = SendPasswordPacket(
-                host_id, controller_id, entered_password
-            )
-            self.network_client.send(password_packet)
-            logger.debug(f"Sent password: {entered_password} to host: {host_id}")
-
-    def handle_controller_auth_response(self, packet: AuthenticationResultPacket):
-        """Controller: Nhận phản hồi xác thực từ host"""
-        if packet.success:
-            logger.info("Authentication successful")
-        else:
-            error_msg = packet.message if packet.message else "Connection failed"
-            self.role = None
-            self.connection_failed.emit(error_msg)
-
-    # ====== CONTROLLER/HOST ======
-    def handle_session_packet(self, packet: SessionPacket):
-        """Xử lý gói tin phiên điều khiển"""
-        if packet.action == SessionAction.CREATED:
-            self.network_client.session_id = packet.session_id
-            logger.debug(f"Session created with ID: {packet.session_id}")
-
-            # Xác định vai trò và bắt đầu session
-            self.start_session()
-
-            # Emit connection_successful sau khi session bắt đầu
-            self.connection_successful.emit()
-
-        else:
-            logger.debug(f"Session ended with ID: {packet.session_id}")
-            self.end_session()
-            # Nếu đang ở tab remote desktop, ngắt kết nối
-            if self.main_window.remote_widget:
-                self.disconnect_from_partner()
-
-    def start_session(self):
-        """Bắt đầu session với vai trò đã xác định"""
-        self.session_active = True
-
-        # Nếu chưa có role, đây là HOST (không gửi RequestConnectionPacket)
-        if self.role is None:
-            self.role = "host"
-            logger.info("Role set to HOST (screen sender)")
-
-        logger.info(f"Starting session with role: {self.role}")
-
-        if self.role == "host":
-            # Bắt đầu chụp và gửi màn hình
-            self.start_screen_sharing()
-        elif self.role == "controller":
-            # Chuẩn bị nhận ảnh màn hình
-            logger.info("Ready to receive screen images")
-
-    def end_session(self):
-        """Kết thúc session"""
-        self.session_active = False
-        self.session_role = None
-        self.network_client.session_id = None
-        # Reset role để chuẩn bị cho connection mới
-        self.role = None
-
-        # Dừng screen sharing thread nếu có
-        if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
-            logger.info("Stopping screen sharing thread")
-            # Thread sẽ tự dừng khi session_active = False
-
-    def start_screen_sharing(self):
-        """Bắt đầu chụp và gửi màn hình (HOST role)"""
-        if self.screen_sharing_thread and self.screen_sharing_thread.is_alive():
-            return
-
-        self.screen_sharing_thread = threading.Thread(
-            target=self._screen_sharing_worker, daemon=True, name="ScreenSharing"
-        )
-        self.screen_sharing_thread.start()
-        logger.info("Screen sharing thread started")
-
-    def _screen_sharing_worker(self):
-        """Worker thread chụp và gửi màn hình"""
-        # Gửi ảnh màn hình ban đầu
-        try:
-            img_pil = capture_screen()
-            original_width, original_height = img_pil.size
-            buffer = io.BytesIO()
-            img_pil.save(buffer, format="JPEG", quality=75, optimize=True)
-            img_data = buffer.getvalue()
-
-            initial_packet = ImagePacket(
-                image_data=lz4.compress(img_data),
-                original_width=original_width,
-                original_height=original_height,
-            )
-
-            self.network_client.send(initial_packet)
-            previous_frame = np.array(img_pil)
-        except Exception as e:
-            logger.error(f"Error sending initial screen: {e}")
-            self.session_active = False
-
-        frame_delay = 1.0 / self.target_fps
-        previous_frame = None
-        previous_hashes = None
-
-        num_workers = min(8, (os.cpu_count() or 1) + 1)
-        compression_pool = ThreadPoolExecutor(
-            max_workers=num_workers, thread_name_prefix="Compression"
-        )
-
-        BLOCK_SIZE = 64
-
-        while self.session_active and self.role == "host":
-            frame_start = time.time()
-            try:
-                current_frame_pil = capture_screen()
-                if current_frame_pil is None:
-                    continue
-                current_frame_np = np.array(current_frame_pil)
-
-                if previous_frame is None:
-                    previous_frame = np.zeros_like(current_frame_np)
-
-                height, width, _ = current_frame_np.shape
-
-                # Khởi tạo hoặc kiểm tra kích thước bảng hash
-                grid_height = (height + BLOCK_SIZE - 1) // BLOCK_SIZE
-                grid_width = (width + BLOCK_SIZE - 1) // BLOCK_SIZE
-                if previous_hashes is None or previous_hashes.shape != (
-                    grid_height,
-                    grid_width,
-                ):
-                    previous_hashes = np.zeros(
-                        (grid_height, grid_width), dtype=np.uint32
-                    )
-                compression_tasks = []
-                for y_idx, y in enumerate(range(0, height, BLOCK_SIZE)):
-                    for x_idx, x in enumerate(range(0, width, BLOCK_SIZE)):
-                        current_block = current_frame_np[
-                            y : y + BLOCK_SIZE, x : x + BLOCK_SIZE
-                        ]
-
-                        current_hash = zlib.crc32(current_block.tobytes())
-
-                        # So sánh hash (nếu khác thì block đã thay đổi)
-                        if current_hash != previous_hashes[y_idx, x_idx]:
-                            compression_tasks.append((current_block, x, y))
-
-                            # Cập nhật lại hash mới vào bảng
-                            previous_hashes[y_idx, x_idx] = current_hash
-
-                if compression_tasks:
-                    # Gửi các task vào pool để nén song song
-                    # map() sẽ trả về kết quả theo đúng thứ tự
-                    future_results = compression_pool.map(
-                        _compress_block_task, compression_tasks
-                    )
-                    # Lọc bỏ các kết quả None (nếu có lỗi)
-                    changed_chunks = [
-                        result for result in future_results if result is not None
-                    ]
-                    if changed_chunks:
-                        frame_update_packet = FrameUpdatePacket(changed_chunks)
-                        self.network_client.send(frame_update_packet)
-
-            except Exception as e:
-                logger.error(f"Error in screen sharing worker: {e}")
-                time.sleep(1)
-
-            frame_time = time.time() - frame_start
-            sleep_time = max(0, frame_delay - frame_time)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-
-        compression_pool.shutdown()
-
-    # ====== CONNECTION SUCCESS/FAILURE ======
-    def on_connection_successful_ui(self):
-        """Xử lý khi kết nối thành công - chạy trong main thread"""
-        try:
-            # Import và tạo RemoteWidget trong main thread
-            from client.gui.remote_widget import RemoteWidget
-
-            self.main_window.remote_widget = RemoteWidget(
-                self.network_client, self.main_window
-            )
-
-            # Connect disconnect signal từ remote widget
+            # Connect disconnect signal from remote widget
             self.main_window.remote_widget.disconnect_requested.connect(
                 self.disconnect_from_partner
             )
 
-            # Thêm tab mới cho remote desktop
+            # Add tab for remote desktop
             tab_index = self.main_window.tabs.addTab(
                 self.main_window.remote_widget, "🖥️ Remote Desktop"
             )
             self.main_window.tabs.setCurrentIndex(tab_index)
 
-            # Update UI
-            self.main_window.connect_btn.setText("🔌 Disconnect")
-            self.main_window.connect_btn.clicked.disconnect()
-            self.main_window.connect_btn.clicked.connect(self.disconnect_from_partner)
-            self.main_window.connect_btn.setEnabled(True)
+            # Update connect button
+            if hasattr(self.main_window, 'connect_btn'):
+                self.main_window.connect_btn.setText("🔌 Disconnect")
+                self.main_window.connect_btn.clicked.disconnect()
+                self.main_window.connect_btn.clicked.connect(self.disconnect_from_partner)
+                self.main_window.connect_btn.setEnabled(True)
 
-            self.main_window.statusBar().showMessage(
-                "✅ Connected - Remote desktop active"
-            )
-            logger.info("Remote desktop connection established")
-
+            logger.info("Remote desktop widget created successfully")
+            
         except Exception as e:
             logger.error(f"Error creating remote widget: {e}")
             self.reset_connect_button()
-
-    def show_connection_failed(self, error_message):
-        """Hiển thị lỗi kết nối"""
-        self.reset_connect_button()
-        QMessageBox.critical(
-            self.main_window,
-            "Connection Failed",
-            f"Failed to connect to partner:\n{error_message}",
-        )
-        self.main_window.statusBar().showMessage("❌ Connection failed")
-
-    def disconnect_from_partner(self):
-        """Ngắt kết nối khỏi partner"""
-        if self.main_window.remote_widget:
+    
+    def _close_remote_desktop(self):
+        """Close remote desktop widget"""
+        if hasattr(self.main_window, 'remote_widget') and self.main_window.remote_widget:
             # Remove remote desktop tab
-            for i in range(self.main_window.tabs.count()):
-                if self.main_window.tabs.widget(i) == self.main_window.remote_widget:
-                    self.main_window.tabs.removeTab(i)
-                    break
-
-            # Cleanup
-            self.main_window.remote_widget.cleanup()
-            self.main_window.remote_widget = None
-
-        self.reset_connect_button()
-        self.main_window.statusBar().showMessage("Disconnected from partner")
-        logger.info("Disconnected from partner")
-
-    def reset_connect_button(self):
-        """Reset trạng thái nút kết nối"""
-        self.main_window.connect_btn.setText("🔗 Connect to Partner")
-        self.main_window.connect_btn.setEnabled(True)
-        self.main_window.connect_btn.clicked.disconnect()
-        self.main_window.connect_btn.clicked.connect(
-            lambda: self.handle_controller_connect(
-                self.main_window.host_id_input.text().strip(),
-                self.main_window.host_pass_input.text().strip(),
-            )
-        )
-
-    # ====== PASSWORD MANAGEMENT ======
-    def refresh_password(self):
-        """Làm mới password"""
-        self.main_window.my_password = PasswordManager.generate_password(6)
-        if self.main_window.password_display:
-            self.main_window.password_display.setText(self.main_window.my_password)
-        if self.main_window.status_bar:
-            self.main_window.status_bar.showMessage("Password refreshed", 2000)
-        logger.info("Password refreshed")
-
-    # ====== CLEANUP ======
-    def cleanup(self):
-        """Dọn dẹp tài nguyên"""
-        if (
-            hasattr(self.main_window, "_cleanup_done")
-            and self.main_window._cleanup_done
-        ):
-            logger.info("Cleanup already performed, skipping...")
-            return
-
-        try:
-            logger.info("Starting cleanup process...")
-            self.main_window._cleanup_done = True
-
-            if self.main_window.remote_widget:
-                logger.info("Cleaning up remote widget...")
+            if hasattr(self.main_window, 'tabs'):
+                for i in range(self.main_window.tabs.count()):
+                    if self.main_window.tabs.widget(i) == self.main_window.remote_widget:
+                        self.main_window.tabs.removeTab(i)
+                        break
+            
+            # Cleanup widget
+            if hasattr(self.main_window.remote_widget, 'cleanup'):
                 self.main_window.remote_widget.cleanup()
-
-            if self.network_client:
-                self.network_client.disconnect()
-
-            logger.info("MainWindow cleanup completed successfully")
+            self.main_window.remote_widget = None
+    
+    def reset_connect_button(self):
+        """Reset connect button state"""
+        if hasattr(self.main_window, 'connect_btn'):
+            self.main_window.connect_btn.setText("🔗 Connect to Partner")
+            self.main_window.connect_btn.setEnabled(True)
+            
+            # Reconnect to controller connect method
+            try:
+                self.main_window.connect_btn.clicked.disconnect()
+            except:
+                pass
+                
+            self.main_window.connect_btn.clicked.connect(
+                lambda: self.connect_to_partner(
+                    self.main_window.host_id_input.text().strip() if hasattr(self.main_window, 'host_id_input') else '',
+                    self.main_window.host_pass_input.text().strip() if hasattr(self.main_window, 'host_pass_input') else ''
+                )
+            )
+    
+    # ====== CLEANUP ======
+    
+    def cleanup(self):
+        """Clean up controller resources"""
+        try:
+            self.stop()
+            
+            if hasattr(self.main_window, 'remote_widget') and self.main_window.remote_widget:
+                self._close_remote_desktop()
+            
+            logger.info("MainWindowController cleanup completed")
+            
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error(f"Error during controller cleanup: {e}")
