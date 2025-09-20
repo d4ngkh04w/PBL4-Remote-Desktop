@@ -2,8 +2,11 @@ import logging
 import threading
 import time
 import uuid
+from typing import Union, Optional
 
 from server.client_manager import ClientManager
+from common.packet import SessionPacket
+from common.enum import SessionAction
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,15 @@ class SessionManager:
                 if info["expires_at"] < now
             ]
             for sid in expired_sessions:
-                logger.info(f"Session {sid} expired, removing...")
+                logger.info(f"Session {sid} expired")
+                controller_id = str(cls.__active_session[sid]["controller_id"])
+                host_id = str(cls.__active_session[sid]["host_id"])
+                ClientManager.get_client_queue(controller_id).put(
+                    SessionPacket(action=SessionAction.TIMEOUT, session_id=sid)
+                )
+                ClientManager.get_client_queue(host_id).put(
+                    SessionPacket(action=SessionAction.TIMEOUT, session_id=sid)
+                )
                 cls.end_session(sid)
 
     @classmethod
@@ -59,7 +70,9 @@ class SessionManager:
             logger.info("All active sessions cleared")
 
     @classmethod
-    def create_session(cls, controller_id: str, host_id: str):
+    def create_session(
+        cls, controller_id: str, host_id: str, timeout: float = 3600
+    ) -> str:
         """Tạo session mới"""
         with cls.__lock:
             try:
@@ -77,7 +90,7 @@ class SessionManager:
                     "controller_id": controller_id,
                     "host_id": host_id,
                     "status": "ACTIVE",
-                    "expires_at": time.time() + 3600,
+                    "expires_at": time.time() + timeout,
                 }
 
                 logger.debug(
@@ -115,8 +128,9 @@ class SessionManager:
 
     @classmethod
     def get_client_sessions(
-        cls, client_id: str
-    ) -> tuple[str, dict[str, str | float]] | tuple[None, None]:
+        cls,
+        client_id: str,
+    ) -> tuple[Optional[str], Optional[dict[str, Union[str, float]]]]:
         """Lấy session của một client"""
         with cls.__lock:
             return next(
@@ -140,3 +154,27 @@ class SessionManager:
                 ):
                     return True
             return False
+
+    @classmethod
+    def get_client_role_in_session(
+        cls, client_id: str, session_id: str | None = None
+    ) -> Optional[str]:
+        """Lấy vai trò của client trong session hiện tại"""
+        with cls.__lock:
+            if session_id:
+                session = cls.__active_session.get(session_id)
+                if not session:
+                    return None
+                if session["controller_id"] == client_id:
+                    return "CONTROLLER"
+                elif session["host_id"] == client_id:
+                    return "HOST"
+                else:
+                    return None
+            else:
+                for session in cls.__active_session.values():
+                    if session["controller_id"] == client_id:
+                        return "CONTROLLER"
+                    elif session["host_id"] == client_id:
+                        return "HOST"
+                return None

@@ -1,12 +1,10 @@
 import sys
 import threading
-import time
 
 from common.logger import setup_logger
-from options import parse_args
+from options import args
 from common.utils import get_resource_usage
 
-args = parse_args()
 logger = setup_logger(is_client=args.client, debug=args.debug)
 
 banner = r"""
@@ -97,7 +95,7 @@ elif args.server:
             server_thread.join(timeout=5)
         if monitor_thread:
             stop_event.set()
-            monitor_thread.join()
+            monitor_thread.join(timeout=1)
             logger.info("Resource monitor stopped")
         sys.exit(0)
     except Exception as e:

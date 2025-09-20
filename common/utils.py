@@ -3,10 +3,11 @@ from PIL import Image
 import psutil
 import sys
 
-if sys.platform == "linux":
-    import mss
-else:
-    from PIL import ImageGrab
+import mss
+from pynput.mouse import Controller
+
+if sys.platform == "win32":
+    from PIL import ImageDraw
 
 
 def generate_numeric_id(num_digits: int = 9) -> str:
@@ -48,17 +49,37 @@ def unformat_numeric_id(formatted_id: str) -> str:
     return formatted_id.replace(" ", "")
 
 
+def get_cursor_pos():
+    """Lấy vị trí chuột hiện tại (x, y)"""
+    mouse = Controller()
+    return int(mouse.position[0]), int(mouse.position[1])
+
+
 def capture_screen() -> Image.Image:
     """Capture screen và trả về đối tượng PIL Image"""
-    if sys.platform == "win32":
-        img = ImageGrab.grab(all_screens=True)
-        return img
-    elif sys.platform == "linux":
-        with mss.mss() as sct:
-            monitor = sct.monitors[1]
-            img = sct.grab(monitor)
-            img_pil = Image.frombytes("RGB", img.size, img.rgb)
-            return img_pil
+    img_pil = Image.new("RGB", (1, 1), (0, 0, 0))
+    if sys.platform == "linux":
+        sct = mss.mss(with_cursor=True)
+    elif sys.platform == "win32":
+        sct = mss.mss()
+
+    monitor = sct.monitors[1]
+    img = sct.grab(monitor)
+    img_pil = Image.frombytes("RGB", img.size, img.rgb)
+
+    if sys.platform == "linux":
+        sct.close()
+        return img_pil
+    elif sys.platform == "win32":
+        cursor_x, cursor_y = get_cursor_pos()
+        draw = ImageDraw.Draw(img_pil)
+        draw.ellipse(
+            (cursor_x - 5, cursor_y - 5, cursor_x + 5, cursor_y + 5),
+            fill=(255, 0, 0),
+            outline=(0, 0, 0),
+        )
+        sct.close()
+        return img_pil
 
 
 def get_resource_usage():

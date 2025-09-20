@@ -51,7 +51,7 @@ def get_parser():
         type=int,
         default=20,
         metavar="FPS",
-        help="Screen sharing frame rate (default: 20 FPS)",
+        help="Screen sharing frame rate (client only, default: 20 FPS)",
     )
     general.add_argument(
         "-mc",
@@ -60,6 +60,14 @@ def get_parser():
         default=10,
         metavar="MAX_CLIENTS",
         help="Maximum number of concurrent clients (server only, default: 10)",
+    )
+    general.add_argument(
+        "-st",
+        "--session-timeout",
+        type=int,
+        default=3600,
+        metavar="SECONDS",
+        help="Session timeout duration in seconds (server only, default: 3600 seconds)",
     )
 
     security = parser.add_argument_group("Security Options")
@@ -89,5 +97,7 @@ def get_parser():
 
 
 def parse_args():
-    parser = get_parser()
-    return parser.parse_args()
+    return get_parser().parse_args()
+
+
+args = parse_args()
