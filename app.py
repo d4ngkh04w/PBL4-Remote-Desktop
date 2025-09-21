@@ -2,10 +2,14 @@ import sys
 import threading
 
 from common.logger import setup_logger
-from options import args
-from common.utils import get_resource_usage
 
-logger = setup_logger(is_client=args.client, debug=args.debug)
+from options import parse_args
+from common.utils import get_resource_usage
+from common.config import Config
+
+args = parse_args()
+Config.save(args)
+logger = setup_logger(is_client=Config.client, debug=Config.debug)
 
 banner = r"""
     ____                       __          ____            __   __            
@@ -19,7 +23,7 @@ banner = r"""
 
 print(banner)
 
-if args.client:
+if Config.client:
     from client import client
 
     client_instance = None
@@ -27,11 +31,11 @@ if args.client:
     try:
         logger.info("Starting client...")
         client_instance = client.RemoteDesktopClient(
-            server_host=args.ip,
-            server_port=args.port,
-            use_ssl=args.ssl,
-            cert_file=args.cert,
-            fps=args.fps,
+            server_host=Config.ip,
+            server_port=Config.port,
+            use_ssl=Config.ssl,
+            cert_file=Config.cert,
+            fps=Config.fps,
         )
         client_instance.run()
     except KeyboardInterrupt:
@@ -42,7 +46,7 @@ if args.client:
         logger.error(f"Failed to start client: {e}")
         sys.exit(1)
 
-elif args.server:
+elif Config.server:
     from server.server import Server
 
     server = None
@@ -52,12 +56,12 @@ elif args.server:
     try:
         logger.info("Starting server...")
         server = Server(
-            host=args.ip,
-            port=args.port,
-            cert_file=args.cert,
-            key_file=args.key,
-            use_ssl=args.ssl,
-            max_clients=args.max_clients,
+            host=Config.ip,
+            port=Config.port,
+            cert_file=Config.cert,
+            key_file=Config.key,
+            use_ssl=Config.ssl,
+            max_clients=Config.max_clients,
         )
 
         server_thread = threading.Thread(target=server.start, daemon=True)

@@ -4,8 +4,8 @@ import ssl
 import threading
 import logging
 
-from common.packet import AssignIdPacket, ResponseConnectionPacket
-from common.enum import ConnectionStatus
+from common.packets import AssignIdPacket, ResponseConnectionPacket
+from common.enums import ConnectionStatus
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
 from server.client_manager import ClientManager

@@ -6,8 +6,8 @@ from typing import Union
 
 import lz4.frame as lz4
 
-from common.enum import PacketType
-from common.packet import Packet, ImagePacket
+from common.enums import PacketType
+from common.packets import Packet, ImagePacket
 from common.safe_deserializer import SafeDeserializer
 
 

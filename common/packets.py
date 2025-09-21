@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from common.enum import (
+from common.enums import (
     PacketType,
     KeyBoardEventType,
     MouseEventType,

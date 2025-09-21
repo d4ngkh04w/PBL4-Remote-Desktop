@@ -5,8 +5,8 @@ import uuid
 from typing import Union, Optional
 
 from server.client_manager import ClientManager
-from common.packet import SessionPacket
-from common.enum import SessionAction
+from common.packets import SessionPacket
+from common.enums import SessionAction
 
 logger = logging.getLogger(__name__)
 

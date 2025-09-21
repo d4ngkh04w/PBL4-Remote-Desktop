@@ -13,15 +13,15 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap, QImage, QPainter
 from PyQt5.QtCore import Qt, pyqtSignal
 
-from client.network.network_client import NetworkClient
-from common.packet import ImagePacket, FrameUpdatePacket
+from client.network.socket_client import SocketClient
+from common.packets import ImagePacket, FrameUpdatePacket
 
 
 class RemoteWidget(QWidget):
     # Signals for remote control events
     disconnect_requested = pyqtSignal()
 
-    def __init__(self, network_client: NetworkClient, parent=None):
+    def __init__(self, network_client: SocketClient, parent=None):
         super().__init__(parent)
         self.network_client = network_client
         self.original_width = 0

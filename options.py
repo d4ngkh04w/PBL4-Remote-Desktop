@@ -98,6 +98,3 @@ def get_parser():
 
 def parse_args():
     return get_parser().parse_args()
-
-
-args = parse_args()

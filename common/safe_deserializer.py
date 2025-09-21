@@ -2,8 +2,8 @@ import io
 import pickle
 from typing import Type
 
-from common.packet import Packet
-from common.enum import (
+from common.packets import Packet
+from common.enums import (
     PacketType,
     SessionAction,
     KeyBoardType,

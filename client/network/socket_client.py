@@ -4,9 +4,9 @@ import ssl
 import logging
 import threading
 from typing import Any, Optional, Union
-from common.enum import EventType 
+from common.enums import EventType
 from client.core.event_bus import EventBus
-from common.packet import (
+from common.packets import (
     AssignIdPacket,
     ImagePacket,
     KeyBoardPacket,
@@ -16,11 +16,9 @@ from common.packet import (
     SendPasswordPacket,
     AuthenticationResultPacket,
     FrameUpdatePacket,
-    ResponseConnectionPacket
+    ResponseConnectionPacket,
 )
 from common.protocol import Protocol
-
-
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +30,7 @@ class SocketClient:
         self.port = server_port
         self.use_ssl = use_ssl
         self.cert_file = cert_file
-        
+
         # Threading
         self.running = False
         self.listener_thread = None
@@ -90,30 +88,30 @@ class SocketClient:
             # Start worker threads
             self._start_threads()
 
-            EventBus.publish(EventType.NETWORK_CONNECTED,{
-                'host': self.host,
-                'port': self.port,
-                'ssl': self.use_ssl
-            }, source = "SocketClient")
+            EventBus.publish(
+                EventType.NETWORK_CONNECTED,
+                {"host": self.host, "port": self.port, "ssl": self.use_ssl},
+                source="SocketClient",
+            )
             return True
 
         except Exception as e:
             logger.error(f"Failed to connect to server {self.host}:{self.port} - {e}")
             self._cleanup_connection()
 
-            EventBus.publish(EventType.NETWORK_CONNECTION_FAILED,{
-                'host': self.host,
-                'port': self.port,
-                'error': str(e)
-            }, source = "SocketClient")
+            EventBus.publish(
+                EventType.NETWORK_CONNECTION_FAILED,
+                {"host": self.host, "port": self.port, "error": str(e)},
+                source="SocketClient",
+            )
             return False
-        
+
     def disconnect(self):
         """Ngắt kết nối khỏi server"""
         with self._lock:
             if not self.running:
                 return
-            logger.info(f"Disconnecting from server {self.host}:{self.port}")            
+            logger.info(f"Disconnecting from server {self.host}:{self.port}")
             self.running = False
             self._disconnected = True
             self.auto_reconnect = False
@@ -121,42 +119,49 @@ class SocketClient:
 
         self._cleanup_connection()
 
-        EventBus.publish(EventType.NETWORK_DISCONNECTED,{
-            'host': self.host,
-            'port': self.port
-        }, source = "SocketClient")
+        EventBus.publish(
+            EventType.NETWORK_DISCONNECTED,
+            {"host": self.host, "port": self.port},
+            source="SocketClient",
+        )
 
-    def send_packet(self, packet: Union[
-        ImagePacket,
-        KeyBoardPacket,
-        MousePacket,
-        RequestConnectionPacket,
-        RequestPasswordPacket,
-        AuthenticationResultPacket,
-        SendPasswordPacket,
-        FrameUpdatePacket,
-    ]) -> bool:
+    def send_packet(
+        self,
+        packet: Union[
+            ImagePacket,
+            KeyBoardPacket,
+            MousePacket,
+            RequestConnectionPacket,
+            RequestPasswordPacket,
+            AuthenticationResultPacket,
+            SendPasswordPacket,
+            FrameUpdatePacket,
+        ],
+    ) -> bool:
         """Gửi packet đến server"""
         if self.socket is None or not self.running:
-            logger.warning("Not connected to server")           
+            logger.warning("Not connected to server")
             return False
         try:
             self._send_queue.put(packet, timeout=1)
             return True
         except Exception as e:
-            logger.error(f"Failed to queue data to send to server - {e}")           
+            logger.error(f"Failed to queue data to send to server - {e}")
             return False
-        
-    def send_packet_sync(self, packet: Union[
-        ImagePacket,
-        KeyBoardPacket,
-        MousePacket,
-        RequestConnectionPacket,
-        RequestPasswordPacket,
-        AuthenticationResultPacket,
-        SendPasswordPacket,
-        FrameUpdatePacket,
-    ]) -> bool:
+
+    def send_packet_sync(
+        self,
+        packet: Union[
+            ImagePacket,
+            KeyBoardPacket,
+            MousePacket,
+            RequestConnectionPacket,
+            RequestPasswordPacket,
+            AuthenticationResultPacket,
+            SendPasswordPacket,
+            FrameUpdatePacket,
+        ],
+    ) -> bool:
         """Gửi packet đến server ngay lập tức (không qua hàng đợi)"""
         if self.socket is None or not self.running:
             logger.warning("Not connected to server")
@@ -170,7 +175,7 @@ class SocketClient:
             logger.error(f"Failed to send data to server - {e}")
             self._handle_connection_error(e)
             return False
-     
+
     def _start_threads(self):
         """Bắt đầu các luồng xử lý"""
         self.listener_thread = threading.Thread(target=self._listener_loop, daemon=True)
@@ -189,7 +194,7 @@ class SocketClient:
                     logger.warning("Not connected to server")
                     self.disconnect()
                     return
-                
+
                 # Set a short timeout to allow checking the shutdown event
                 self.socket.settimeout(0.5)
                 packet = Protocol.receive_packet(self.socket)
@@ -238,7 +243,7 @@ class SocketClient:
             # Publish packet với event type dựa trên packet type
             event_type = f"PACKET_{packet.packet_type.name}"
             EventBus.publish(event_type, packet, source="SocketClient")
-            
+
         except Exception as e:
             logger.error(f"Error handling received packet - {e}")
 
@@ -249,31 +254,39 @@ class SocketClient:
         with self._lock:
             if self._disconnected:
                 return
-        
+
         if self.auto_reconnect and self._reconnect_attempts < self.max_retries:
             self._attempt_reconnect()
         else:
             self._cleanup_connection()
-            EventBus.publish(EventType.NETWORK_DISCONNECTED,{
-                'host': self.host,
-                'port': self.port,
-                'error': str(error)
-            }, source = "SocketClient")
+            EventBus.publish(
+                EventType.NETWORK_DISCONNECTED,
+                {"host": self.host, "port": self.port, "error": str(error)},
+                source="SocketClient",
+            )
 
     def _attempt_reconnect(self):
         """Thử kết nối lại với server"""
         self._reconnect_attempts += 1
-        delay = self.retry_delay * (self.reconnect_backoff ** (self._reconnect_attempts - 1))
-        logger.info(f"Attempting to reconnect in {delay:.1f} seconds (Attempt {self._reconnect_attempts}/{self.max_retries})")
+        delay = self.retry_delay * (
+            self.reconnect_backoff ** (self._reconnect_attempts - 1)
+        )
+        logger.info(
+            f"Attempting to reconnect in {delay:.1f} seconds (Attempt {self._reconnect_attempts}/{self.max_retries})"
+        )
 
-        EventBus.publish(EventType.NETWORK_RECONNECTING,{
-            'host': self.host,
-            'port': self.port,
-            'attempt': self._reconnect_attempts,
-            'max_retries': self.max_retries,
-            'delay': delay
-        }, source = "SocketClient")
-        
+        EventBus.publish(
+            EventType.NETWORK_RECONNECTING,
+            {
+                "host": self.host,
+                "port": self.port,
+                "attempt": self._reconnect_attempts,
+                "max_retries": self.max_retries,
+                "delay": delay,
+            },
+            source="SocketClient",
+        )
+
         threading.Timer(delay, self._do_reconnect).start()
 
     def _do_reconnect(self):
@@ -291,11 +304,15 @@ class SocketClient:
             else:
                 logger.error("Max reconnection attempts reached, giving up")
                 self.auto_reconnect = False
-                EventBus.publish(EventType.NETWORK_DISCONNECTED,{
-                    'host': self.host,
-                    'port': self.port,
-                    'error': 'Max reconnection attempts reached'
-                }, source = "SocketClient")
+                EventBus.publish(
+                    EventType.NETWORK_DISCONNECTED,
+                    {
+                        "host": self.host,
+                        "port": self.port,
+                        "error": "Max reconnection attempts reached",
+                    },
+                    source="SocketClient",
+                )
 
     def _cleanup_connection(self):
         """Dọn dẹp kết nối và các tài nguyên liên quan"""
@@ -319,7 +336,7 @@ class SocketClient:
         if self.listener_thread and self.listener_thread.is_alive():
             if self.listener_thread != threading.current_thread():
                 self.listener_thread.join(timeout=1)
-        
+
         if self.sender_thread and self.sender_thread.is_alive():
             if self.sender_thread != threading.current_thread():
                 self.sender_thread.join(timeout=1)
@@ -329,7 +346,7 @@ class SocketClient:
             try:
                 self._send_queue.get_nowait()
             except Empty:
-                break    
+                break
 
     def __del__(self):
         """Hủy đối tượng và dọn dẹp tài nguyên"""
@@ -337,5 +354,3 @@ class SocketClient:
             self.disconnect()
         except Exception:
             pass
-            
-            

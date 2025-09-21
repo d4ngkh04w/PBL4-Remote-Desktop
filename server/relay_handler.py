@@ -8,7 +8,7 @@ import os
 import threading
 
 
-from common.packet import (
+from common.packets import (
     Packet,
     RequestConnectionPacket,
     RequestPasswordPacket,
@@ -21,10 +21,12 @@ from common.packet import (
     MousePacket,
     KeyBoardPacket,
 )
-from common.enum import SessionAction, ConnectionStatus, AuthenticationResult
+from common.enums import SessionAction, ConnectionStatus, AuthenticationResult
 from server.client_manager import ClientManager
 from server.session_manager import SessionManager
-from options import args
+
+# from options import args
+from common.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +236,7 @@ class RelayHandler:
                     session_id = SessionManager.create_session(
                         host_id=host_id,
                         controller_id=controller_id,
-                        timeout=args.session_timeout,
+                        timeout=Config.session_timeout,
                     )
                 else:
                     response.connection_status = ConnectionStatus.REJECTED

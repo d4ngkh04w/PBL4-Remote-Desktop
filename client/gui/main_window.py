@@ -3,9 +3,10 @@ Main window for client-new architecture.
 Updated to use EventBus and new controller/service architecture.
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# import sys
+# import os
+
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -30,17 +31,17 @@ from client.service.auth_service import AuthService
 class MainWindow(QMainWindow):
     """
     Main window for the client-new application.
-    
+
     Responsibilities:
     - Create and layout UI components
     - Handle basic UI events
     - Delegate business logic to MainWindowController
     - Display information from services via controller
     """
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # UI components that need to be accessed later
         self.id_display = None
         self.password_display = None
@@ -48,27 +49,27 @@ class MainWindow(QMainWindow):
 
         self.host_id_input = None
         self.host_pass_input = None
-        
+
         self.tabs = None
         self.status_bar = None
         self.remote_widget = None
-        
+
         # Track cleanup state
         self._cleanup_done = False
-        
+
         # Initialize controller for business logic
         self.controller = MainWindowController(self)
-        
+
         # Setup UI
         self.init_ui()
-        
+
         # Start controller after UI is ready
         self.controller.start()
-        
+
         # Initialize password display
         if self.password_display:
             self.password_display.setText(AuthService.get_current_password())
-        
+
         # Connect to server after everything is ready
         self.controller.connect_to_server()
 
@@ -117,9 +118,9 @@ class MainWindow(QMainWindow):
             self.status_bar = QStatusBar()
             self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Initializing...")
-        
+
         # Connect to server will be done after UI is fully initialized
-    
+
     def create_host_tab(self):
         """Tab hiển thị ID của mình"""
         host_widget = QWidget()
@@ -254,7 +255,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(host_widget, "🏠 Your ID")
-    
+
     def create_controller_tab(self):
         """Tab kết nối đến partner"""
         controller_widget = QWidget()
@@ -347,7 +348,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
         self.tabs.addTab(controller_widget, "🎮 Control Host")
-    
+
     def handle_connect_click(self):
         """Handle connect button click"""
         host_id = self.host_id_input.text().strip()
@@ -365,37 +366,38 @@ class MainWindow(QMainWindow):
             clipboard = QApplication.clipboard()
             # Remove formatting from ID before copying
             from common.utils import unformat_numeric_id
+
             clipboard.setText(unformat_numeric_id(self.id_display.text()))
             self.status_bar.showMessage("ID copied to clipboard!", 2000)
-    
+
     def copy_password(self):
-        """Copy password to clipboard"""      
+        """Copy password to clipboard"""
         if AuthService:
             password = AuthService.get_current_password()
             clipboard = QApplication.clipboard()
             clipboard.setText(password)
             self.status_bar.showMessage("Password copied to clipboard!", 2000)
-    
+
     def closeEvent(self, event):
         """Handle window close event"""
         if not self._cleanup_done:
             self.cleanup()
         event.accept()
-    
+
     def cleanup(self):
         """Clean up resources when closing"""
         if self._cleanup_done:
             return
-            
+
         try:
             self._cleanup_done = True
-            
+
             if self.controller:
                 self.controller.cleanup()
-            
+
             if self.remote_widget:
-                if hasattr(self.remote_widget, 'cleanup'):
+                if hasattr(self.remote_widget, "cleanup"):
                     self.remote_widget.cleanup()
-                    
+
         except Exception as e:
             print(f"Error during cleanup: {e}")
