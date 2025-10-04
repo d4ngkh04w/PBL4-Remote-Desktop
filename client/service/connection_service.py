@@ -11,6 +11,7 @@ from common.packets import (
     SendPasswordPacket,
     AuthenticationResultPacket,
 )
+from common.enums import ConnectionStatus
 
 from common.enums import EventType, PacketType
 
@@ -188,14 +189,27 @@ class ConnectionService:
     @classmethod
     def _handle_response_connection_packet(cls, packet: ResponseConnectionPacket):
         """Xử lý gói tin phản hồi kết nối từ host"""
-        pass
-        # logger.debug("Received response connection packet")
-
-        # if not hasattr(packet, "success") or not hasattr(packet, "message"):
-        #     logger.error("Invalid response connection packet")
-        #     return
-
-        # if packet.connection_status == ""
+        if not hasattr(packet, "connection_status") or not hasattr(
+            packet, "message"
+        ):
+            logger.error("Invalid response connection packet")
+            return
+        
+    
+        logger.info("Received connection response: %s", packet.message)
+        if packet.connection_status == ConnectionStatus.FAILED:
+            EventBus.publish(
+                EventType.UI_UPDATE_STATUS.name,
+                {"message": f"Connection failed: {packet.message}", "type": "error"},
+                source="ConnectionService",
+            )
+        elif packet.connection_status == ConnectionStatus.REJECTED:
+            EventBus.publish(
+                EventType.UI_UPDATE_STATUS.name,
+                {"message": f"Connection rejected: {packet.message}", "type": "error"},
+                source="ConnectionService",
+            )
+            
 
     @classmethod
     def _handle_request_password_packet(cls, packet: RequestPasswordPacket):

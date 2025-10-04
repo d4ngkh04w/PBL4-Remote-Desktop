@@ -107,17 +107,16 @@ class EventType(Enum):
     PASSWORD_CORRECT = 33 # đã xử lí
     PASSWORD_INCORRECT = 34 # đã xử lí
 
-
     
 class ConnectionStatus(Enum):
     """
     Enum trạng thái kết nối
     """
 
-    SUCCESS = 1
+    # SUCCESSED = 1
     FAILED = 2
     REJECTED = 3
-    SESSION_EXPIRED = 4
+    # SESSION_EXPIRED = 4
 
 
 class AuthenticationResult(Enum):

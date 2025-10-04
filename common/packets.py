@@ -11,7 +11,6 @@ from common.enums import (
     AuthenticationResult,
 )
 
-
 class BasePacket:
     """
     Lớp cơ sở cho tất cả các gói tin
@@ -222,3 +221,16 @@ Packet = Union[
     RequestPasswordPacket,
     SessionPacket,
 ]
+# AssignIdPacket: C-ID (Server -> Client)
+
+# ConnectionRequestPacket: C-D, H-ID (Controller -> Server)
+# ConnectionResponsePacket: connection_status: FAIL (Server -> Controller)
+
+# RequestPasswordPacket: host_id, controller_id (Host -> Controller)
+# SendPasswordPacket: controller_id, host_id, success, message (Controller -> Host)
+
+# SessionControlPacket: action (Server -> Host, Controller)
+# ImagePacket: image_data, original_width, original_height (Host -> Controller)
+# FrameUpdatePacket: chunks (Host -> Controller)
+# KeyboardPacket: event_type, key_type, key_name, key_vk (Controller -> Host)
+# MousePacket: event_type, position, button, scroll_delta (Controller -> Host)
