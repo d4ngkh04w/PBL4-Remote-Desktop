@@ -4,7 +4,7 @@ import ssl
 import threading
 import logging
 
-from common.packets import AssignIdPacket, ResponseConnectionPacket
+from common.packets import AssignIdPacket, ConnectionResponsePacket
 from common.enums import ConnectionStatus
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
@@ -59,8 +59,8 @@ class Server:
                         logger.warning(
                             f"Max clients reached. Rejecting connection from {addr}"
                         )
-                        rejection_packet = ResponseConnectionPacket(
-                            connection_status=ConnectionStatus.REJECTED,
+                        rejection_packet = ConnectionResponsePacket(
+                            connection_status=ConnectionStatus.SERVER_FULL,
                             message="Server is currently full. Please try again later",
                         )
                         Protocol.send_packet(client_socket, rejection_packet)

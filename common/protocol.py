@@ -67,13 +67,9 @@ class Protocol:
             PacketType.KEYBOARD.value,
             PacketType.MOUSE.value,
             PacketType.ASSIGN_ID.value,
-            PacketType.REQUEST_CONNECTION.value,
-            PacketType.AUTHENTICATION_RESPONSE.value,
-            PacketType.AUTHENTICATION_REQUEST.value,
-            PacketType.AUTHENTICATION_RESULT.value,
-            PacketType.RESPONSE_CONNECTION.value,
-            PacketType.SEND_PASSWORD.value,
-            PacketType.SESSION.value,
+            PacketType.CONNECTION_REQUEST.value,
+            PacketType.CONNECTION_RESPONSE.value,  
+            PacketType.SEND_PASSWORD.value,            
         }
 
         if packet_type not in valid_packet_types:

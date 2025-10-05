@@ -5,7 +5,7 @@ import logging
 from client.core.event_bus import EventBus
 from common.packets import (
     AssignIdPacket,
-    RequestConnectionPacket,
+    ConnectionRequestPacket,
     ResponseConnectionPacket,
     RequestPasswordPacket,
     SendPasswordPacket,
@@ -173,7 +173,7 @@ class ConnectionService:
             logger.error("Not connected to server")
             return False
         try:
-            request_packet = RequestConnectionPacket(
+            request_packet = ConnectionRequestPacket(
                 controller_id=cls._socket_client.client_id, host_id=host_id
             )
             success = cls._socket_client.send_packet(request_packet)
@@ -273,7 +273,7 @@ class ConnectionService:
 
     # ====== Host Methods ======
     @classmethod
-    def _handle_request_connection_packet(cls, packet: RequestConnectionPacket):
+    def _handle_request_connection_packet(cls, packet: ConnectionRequestPacket):
         """Xử lý gói tin yêu cầu kết nối từ controller"""
         if not hasattr(packet, "controller_id") or not hasattr(packet, "host_id"):
             logger.error("Invalid request connection packet")

@@ -5,10 +5,8 @@ from common.enums import (
     KeyBoardEventType,
     MouseEventType,
     MouseButton,
-    SessionAction,
     KeyBoardType,
     ConnectionStatus,
-    AuthenticationResult,
 )
 
 class BasePacket:
@@ -21,6 +19,74 @@ class BasePacket:
 
     def __repr__(self):
         return f"{self.__class__.__name__}(type={self.packet_type})"
+
+
+class AssignIdPacket(BasePacket):
+    """
+    Server cấp ID cho client
+    """
+
+    def __init__(self, client_id: str):
+        super().__init__(PacketType.ASSIGN_ID)
+        self.client_id = client_id
+
+    def __repr__(self):
+        return f"AssignIdPacket(type={self.packet_type}, client_id={self.client_id})"
+
+
+class ConnectionRequestPacket(BasePacket):
+    """
+    Yêu cầu kết nối từ controller -> host
+    """
+
+    def __init__(self, host_id: str, controller_id: str):
+        super().__init__(PacketType.CONNECTION_REQUEST)
+        self.host_id = host_id
+        self.controller_id = controller_id
+
+    def __repr__(self):
+        return f"ConnectionRequestPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id})"
+
+
+class ConnectionResponsePacket(BasePacket):
+
+    def __init__(self, connection_status: ConnectionStatus, message: str, client_id: str = ""):
+        super().__init__(PacketType.CONNECTION_RESPONSE)
+        self.connection_status = connection_status
+        self.message = message
+        self.client_id = client_id
+
+    def __repr__(self):
+        return f"ConnectionResponsePacket(type={self.packet_type}, connection_status={self.connection_status})"
+
+
+class SendPasswordPacket(BasePacket):
+    """
+    Phản hồi password lại cho máy host
+    """
+
+    def __init__(self, host_id: str, controller_id: str, password: str):
+        super().__init__(PacketType.SEND_PASSWORD)
+        self.host_id = host_id
+        self.controller_id = controller_id
+        self.password = password
+
+    def __repr__(self):
+        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id}, password={self.password})"
+
+
+class RequestPasswordPacket(BasePacket):
+    """
+    Yêu cầu xác thực password từ host
+    """
+
+    def __init__(self, controller_id: str, host_id: str):
+        super().__init__(PacketType.AUTHENTICATION_REQUEST)
+        self.controller_id = controller_id
+        self.host_id = host_id
+
+    def __repr__(self):
+        return f"RequestPasswordPacket(type={self.packet_type}, controller_id={self.controller_id})"
 
 
 class ImagePacket(BasePacket):
@@ -62,7 +128,7 @@ class FrameUpdatePacket(BasePacket):
         )
 
 
-class KeyBoardPacket(BasePacket):
+class KeyboardPacket(BasePacket):
     """
     Gói tin bàn phím
     """
@@ -108,118 +174,16 @@ class MousePacket(BasePacket):
         return f"MousePacket(type={self.packet_type}, event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
-class AssignIdPacket(BasePacket):
-    """
-    Server cấp ID cho client
-    """
-
-    def __init__(self, client_id: str):
-        super().__init__(PacketType.ASSIGN_ID)
-        self.client_id = client_id
-
-    def __repr__(self):
-        return f"AssignIdPacket(type={self.packet_type}, client_id={self.client_id})"
-
-
-class RequestConnectionPacket(BasePacket):
-    """
-    Yêu cầu kết nối từ controller -> host
-    """
-
-    def __init__(self, host_id: str, controller_id: str):
-        super().__init__(PacketType.REQUEST_CONNECTION)
-        self.host_id = host_id
-        self.controller_id = controller_id
-
-    def __repr__(self):
-        return f"RequestConnectionPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id})"
-
-
-class ResponseConnectionPacket(BasePacket):
-    """
-    Phản hồi kết nối
-    """
-
-    def __init__(self, connection_status: ConnectionStatus, message: str):
-        super().__init__(PacketType.RESPONSE_CONNECTION)
-        self.connection_status = connection_status
-        self.message = message
-
-    def __repr__(self):
-        return f"ResponseConnectionPacket(type={self.packet_type}, connection_status={self.connection_status}, message={self.message})"
-
-
-class SendPasswordPacket(BasePacket):
-    """
-    Phản hồi password lại cho máy host
-    """
-
-    def __init__(self, host_id: str, controller_id: str, password: str):
-        super().__init__(PacketType.SEND_PASSWORD)
-        self.host_id = host_id
-        self.controller_id = controller_id
-        self.password = password
-
-    def __repr__(self):
-        return f"SendPasswordPacket(type={self.packet_type}, host_id={self.host_id}, controller_id={self.controller_id}, password={self.password})"
-
-
-class RequestPasswordPacket(BasePacket):
-    """
-    Yêu cầu xác thực password từ host
-    """
-
-    def __init__(self, controller_id: str, host_id: str):
-        super().__init__(PacketType.AUTHENTICATION_REQUEST)
-        self.controller_id = controller_id
-        self.host_id = host_id
-
-    def __repr__(self):
-        return f"RequestPasswordPacket(type={self.packet_type}, controller_id={self.controller_id})"
-
-
-class AuthenticationResultPacket(BasePacket):
-    """
-    Gói tin kết quả xác thực
-    """
-
-    def __init__(self, controller_id: str, host_id: str, success: bool, message: str):
-        super().__init__(PacketType.AUTHENTICATION_RESULT)
-        self.controller_id = controller_id
-        self.host_id = host_id
-        self.success = success
-        self.message = message
-
-    def __repr__(self):
-        return f"AuthenticationResultPacket(type={self.packet_type}, success={self.success}, message={self.message})"
-
-
-class SessionPacket(BasePacket):
-    """
-    Gói tin phiên làm việc
-    """
-
-    def __init__(self, session_id: str, action: SessionAction):
-        super().__init__(PacketType.SESSION)
-        self.session_id = session_id
-        self.action = action
-
-    def __repr__(self):
-        return f"SessionPacket(type={self.packet_type}, session_id={self.session_id}, action={self.action})"
-
-
 Packet = Union[
+    AssignIdPacket,
+    ConnectionRequestPacket,
+    ConnectionResponsePacket,
+    SendPasswordPacket,
+    RequestPasswordPacket,
     ImagePacket,
     FrameUpdatePacket,
-    KeyBoardPacket,
+    KeyboardPacket,
     MousePacket,
-    AssignIdPacket,
-    SendPasswordPacket,
-    RequestConnectionPacket,
-    ResponseConnectionPacket,
-    AuthenticationResultPacket,
-    RequestPasswordPacket,
-    SessionPacket,
 ]
 # AssignIdPacket: C-ID (Server -> Client)
 
