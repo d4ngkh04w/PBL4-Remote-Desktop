@@ -7,7 +7,7 @@ from typing import Union
 import lz4.frame as lz4
 
 from common.enums import PacketType
-from common.packets import Packet, ImagePacket
+from common.packets import Packet
 from common.safe_deserializer import SafeDeserializer
 
 
@@ -61,16 +61,7 @@ class Protocol:
         if length < 0:
             raise ValueError("Invalid packet length")
 
-        valid_packet_types = {
-            PacketType.IMAGE.value,
-            PacketType.FRAME_UPDATE.value,
-            PacketType.KEYBOARD.value,
-            PacketType.MOUSE.value,
-            PacketType.ASSIGN_ID.value,
-            PacketType.CONNECTION_REQUEST.value,
-            PacketType.CONNECTION_RESPONSE.value,  
-            PacketType.SEND_PASSWORD.value,            
-        }
+        valid_packet_types = {pt.value for pt in PacketType}
 
         if packet_type not in valid_packet_types:
             raise ValueError(f"Invalid packet type: {packet_type}")

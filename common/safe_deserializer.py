@@ -5,13 +5,11 @@ from typing import Type
 from common.packets import Packet
 from common.enums import (
     PacketType,
-    SessionAction,
     KeyBoardType,
     KeyBoardEventType,
     MouseEventType,
     MouseButton,
     ConnectionStatus,
-    AuthenticationResult,
 )
 
 
@@ -19,13 +17,11 @@ class SafeDeserializer:
 
     ALLOWED_CLASSES = {cls.__name__: cls for cls in Packet.__args__}
     ALLOWED_CLASSES[PacketType.__name__] = PacketType
-    ALLOWED_CLASSES[SessionAction.__name__] = SessionAction
     ALLOWED_CLASSES[KeyBoardType.__name__] = KeyBoardType
     ALLOWED_CLASSES[KeyBoardEventType.__name__] = KeyBoardEventType
     ALLOWED_CLASSES[MouseEventType.__name__] = MouseEventType
     ALLOWED_CLASSES[MouseButton.__name__] = MouseButton
     ALLOWED_CLASSES[ConnectionStatus.__name__] = ConnectionStatus
-    ALLOWED_CLASSES[AuthenticationResult.__name__] = AuthenticationResult
 
     class SafeUnpickler(pickle.Unpickler):
         def __init__(self, file, allowed_classes: dict[str, Type]):

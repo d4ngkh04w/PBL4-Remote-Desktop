@@ -14,14 +14,12 @@ from common.packets import (
     RequestPasswordPacket,
     SendPasswordPacket,
     ConnectionResponsePacket,
-    AuthenticationResultPacket,
     ImagePacket,
     FrameUpdatePacket,
-    SessionPacket,
     MousePacket,
-    KeyBoardPacket,
+    KeyboardPacket,
 )
-from common.enums import SessionAction, ConnectionStatus, AuthenticationResult
+from common.enums import ConnectionStatus
 from server.client_manager import ClientManager
 from server.session_manager import SessionManager
 
@@ -81,7 +79,7 @@ class RelayHandler:
                 ImagePacket: cls.__relay_stream_packet,
                 FrameUpdatePacket: cls.__relay_stream_packet,
                 MousePacket: cls.__relay_stream_packet,
-                KeyBoardPacket: cls.__relay_stream_packet,
+                KeyboardPacket: cls.__relay_stream_packet,
             }
 
     @staticmethod
@@ -127,12 +125,14 @@ class RelayHandler:
             return
 
         host_id = packet.host_id
-        host_queue = ClientManager.get_client_queue(host_id)    
+        host_queue = ClientManager.get_client_queue(host_id)
         if not host_queue:
             response = ConnectionResponsePacket(
                 connection_status=ConnectionStatus.HOST_NOT_FOUND,
                 message=f"Client {host_id} not found",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
             return
 
@@ -140,9 +140,11 @@ class RelayHandler:
 
         if not ClientManager.is_client_online(host_id):
             response = ConnectionResponsePacket(
-                connection_status=ConnectionStatus.HOST_NOT_FOUND,
+                connection_status=ConnectionStatus.HOST_UNAVAILABLE,
                 message=f"Client {host_id} is not online",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
         else:
             host_queue.put(packet)
@@ -160,11 +162,23 @@ class RelayHandler:
 
         controller_id = packet.controller_id
         controller_queue = ClientManager.get_client_queue(controller_id)
+        if not controller_queue:
+            response = ConnectionResponsePacket(
+                connection_status=ConnectionStatus.CONTROLLER_NOT_FOUND,
+                message=f"Client {controller_id} not found",
+                host_id=host_id,
+                controller_id=controller_id,
+            )
+            host_queue.put(response)
+            return
+
         if not host_queue:
             response = ConnectionResponsePacket(
                 connection_status=ConnectionStatus.HOST_NOT_FOUND,
                 message=f"Client {host_id} not found",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
             return
 
@@ -172,9 +186,11 @@ class RelayHandler:
 
         if not ClientManager.is_client_online(host_id):
             response = ConnectionResponsePacket(
-                connection_status=ConnectionStatus.HOST_NOT_FOUND,
+                connection_status=ConnectionStatus.HOST_UNAVAILABLE,
                 message=f"Client {host_id} is not online",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
         else:
             controller_queue.put(packet)
@@ -196,7 +212,9 @@ class RelayHandler:
             response = ConnectionResponsePacket(
                 connection_status=ConnectionStatus.HOST_NOT_FOUND,
                 message=f"Client {host_id} not found",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
             return
 
@@ -204,9 +222,11 @@ class RelayHandler:
 
         if not ClientManager.is_client_online(host_id):
             response = ConnectionResponsePacket(
-                connection_status=ConnectionStatus.HOST_NOT_FOUND,
+                connection_status=ConnectionStatus.HOST_UNAVAILABLE,
                 message=f"Client {host_id} is not online",
-            )            
+                controller_id=controller_id,
+                host_id=host_id,
+            )
             controller_queue.put(response)
         else:
             host_queue.put(packet)
@@ -222,32 +242,27 @@ class RelayHandler:
             logger.warning(f"Host {host_id} not found")
             return
 
-        logger.debug(f"Host {host_id} authentication result: {packet.success}")
-
         controller_id = packet.controller_id
         controller_queue = ClientManager.get_client_queue(controller_id)
-
-        
         if not controller_queue:
             response = ConnectionResponsePacket(
                 connection_status=ConnectionStatus.CONTROLLER_NOT_FOUND,
                 message=f"Client {controller_id} not found",
-            )          
+            )
             host_queue.put(response)
             return
 
         if packet.connection_status == ConnectionStatus.SUCCESS:
             try:
-                session_id = ""
                 if not SessionManager.is_client_in_session(
                     host_id
                 ) and not SessionManager.is_client_in_session(controller_id):
-                    session_id = SessionManager.create_session(
+                    _ = SessionManager.create_session(
                         host_id=host_id,
                         controller_id=controller_id,
                         timeout=Config.session_timeout,
                     )
-                else:                   
+                else:
                     if SessionManager.is_client_in_session(host_id):
                         response = ConnectionResponsePacket(
                             connection_status=ConnectionStatus.HOST_UNAVAILABLE,
@@ -262,29 +277,17 @@ class RelayHandler:
                         )
                         return
 
-                session_packet = SessionPacket(
-                    session_id=session_id,
-                    action=SessionAction.CREATED,
-                )
+                packet.connection_status = ConnectionStatus.SESSION_STARTED
+                packet.message = "Session started"
+                controller_queue.put(packet)
+                host_queue.put(packet)
 
-                if controller_queue:
-                    controller_queue.put(session_packet)
-                    logger.debug(
-                        f"Session {session_id} creation notified to controller {controller_id}"
-                    )
-
-                if host_queue:
-                    host_queue.put(session_packet)
-                    logger.debug(
-                        f"Session {session_id} creation notified to host {host_id}"
-                    )
             except Exception as e:
                 logger.error(f"Failed to create session: {e}")
-                response.connection_status = ConnectionStatus.FAILED
-                response.message = "Failed to create session"
-                controller_queue.put(response)
-                host_queue.put(response)
-                return
+                packet.connection_status = ConnectionStatus.ERROR
+                packet.message = "Failed to create session"
+                host_queue.put(packet)
+                controller_queue.put(packet)
         else:
             controller_queue.put(packet)
             logger.debug(f"Authentication result sent to controller {controller_id}")
@@ -311,9 +314,11 @@ class RelayHandler:
 
         receiver_queue = ClientManager.get_client_queue(str(receiver_id))
 
-        session_packet = SessionPacket(
-            session_id=session_id,
-            action=SessionAction.ENDED,
+        response = ConnectionResponsePacket(
+            connection_status=ConnectionStatus.SESSION_ENDED,
+            message="Session ended",
+            controller_id=str(session_info["controller_id"]),
+            host_id=str(session_info["host_id"]),
         )
 
         if not SessionManager.is_client_in_session(
@@ -325,9 +330,9 @@ class RelayHandler:
             SessionManager.end_session(session_id)
             sender_queue = ClientManager.get_client_queue(sender_id)
             if sender_queue:
-                sender_queue.put(session_packet)
+                sender_queue.put(response)
             if receiver_queue:
-                receiver_queue.put(session_packet)
+                receiver_queue.put(response)
 
         if receiver_queue:
             try:

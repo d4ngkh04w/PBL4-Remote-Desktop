@@ -5,8 +5,8 @@ import uuid
 from typing import Union, Optional
 
 from server.client_manager import ClientManager
-from common.packets import SessionPacket
-from common.enums import SessionAction
+from common.packets import ConnectionResponsePacket
+from common.enums import ConnectionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +40,21 @@ class SessionManager:
             expired_sessions = [
                 sid
                 for sid, info in cls.__active_session.items()
-                if info["expires_at"] < now
+                if float(info["expires_at"]) < now
             ]
             for sid in expired_sessions:
                 logger.info(f"Session {sid} expired")
                 controller_id = str(cls.__active_session[sid]["controller_id"])
                 host_id = str(cls.__active_session[sid]["host_id"])
-                ClientManager.get_client_queue(controller_id).put(
-                    SessionPacket(action=SessionAction.TIMEOUT, session_id=sid)
+
+                response = ConnectionResponsePacket(
+                    connection_status=ConnectionStatus.SESSION_TIMEOUT,
+                    message="Session timed out due to inactivity",
+                    host_id=host_id,
+                    controller_id=controller_id,
                 )
-                ClientManager.get_client_queue(host_id).put(
-                    SessionPacket(action=SessionAction.TIMEOUT, session_id=sid)
-                )
+                ClientManager.get_client_queue(controller_id).put(response)
+                ClientManager.get_client_queue(host_id).put(response)
                 cls.end_session(sid)
 
     @classmethod
