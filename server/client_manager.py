@@ -36,7 +36,7 @@ class ClientManager:
                 ip=client_ip,
                 id=client_id,
                 status="ONLINE",
-                queue=Queue(maxsize=6144),
+                queue=Queue(maxsize=2048),
             )
 
     @classmethod
