@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # Create tabs
+        # Create tabs only after self.tabs is initialized
         self.create_host_tab()
         self.create_controller_tab()
 
@@ -347,13 +347,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.connect_btn)
 
         layout.addStretch()
+
         self.tabs.addTab(controller_widget, "🎮 Control Host")
 
     def handle_connect_click(self):
         """Handle connect button click"""
-        host_id = self.host_id_input.text().strip()
-        host_pass = self.host_pass_input.text().strip()
-        self.controller.connect_to_partner(host_id, host_pass)
+        if self.host_id_input is not None and self.host_pass_input is not None:
+            host_id = self.host_id_input.text().strip()
+            host_pass = self.host_pass_input.text().strip()
+            self.controller.connect_to_partner(host_id, host_pass)
+        else:
+            if self.status_bar is not None:
+                self.status_bar.showMessage("Input fields are not ready.", 5000)
 
     def copy_id_to_clipboard(self):
         """Copy ID to clipboard"""
@@ -367,16 +372,20 @@ class MainWindow(QMainWindow):
             # Remove formatting from ID before copying
             from common.utils import unformat_numeric_id
 
-            clipboard.setText(unformat_numeric_id(self.id_display.text()))
-            self.status_bar.showMessage("ID copied to clipboard!", 2000)
+            if clipboard is not None:
+                clipboard.setText(unformat_numeric_id(self.id_display.text()))
+                if self.status_bar is not None:
+                    self.status_bar.showMessage("ID copied to clipboard!", 2000)
 
     def copy_password(self):
         """Copy password to clipboard"""
         if AuthService:
             password = AuthService.get_current_password()
             clipboard = QApplication.clipboard()
-            clipboard.setText(password)
-            self.status_bar.showMessage("Password copied to clipboard!", 2000)
+            if clipboard is not None:
+                clipboard.setText(password)
+                if self.status_bar is not None:
+                    self.status_bar.showMessage("Password copied to clipboard!", 2000)
 
     def closeEvent(self, event):
         """Handle window close event"""

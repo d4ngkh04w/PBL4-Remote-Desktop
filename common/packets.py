@@ -9,6 +9,7 @@ from common.enums import (
     ConnectionStatus,
 )
 
+
 class BasePacket:
     """
     Lớp cơ sở cho tất cả các gói tin
@@ -50,11 +51,18 @@ class ConnectionRequestPacket(BasePacket):
 
 class ConnectionResponsePacket(BasePacket):
 
-    def __init__(self, connection_status: ConnectionStatus, message: str, client_id: str = ""):
+    def __init__(
+        self,
+        connection_status: ConnectionStatus,
+        message: str,
+        host_id: str = "",
+        controller_id: str = "",
+    ):
         super().__init__(PacketType.CONNECTION_RESPONSE)
         self.connection_status = connection_status
         self.message = message
-        self.client_id = client_id
+        self.host_id = host_id
+        self.controller_id = controller_id
 
     def __repr__(self):
         return f"ConnectionResponsePacket(type={self.packet_type}, connection_status={self.connection_status})"
@@ -81,7 +89,7 @@ class RequestPasswordPacket(BasePacket):
     """
 
     def __init__(self, controller_id: str, host_id: str):
-        super().__init__(PacketType.AUTHENTICATION_REQUEST)
+        super().__init__(PacketType.REQUEST_PASSWORD)
         self.controller_id = controller_id
         self.host_id = host_id
 

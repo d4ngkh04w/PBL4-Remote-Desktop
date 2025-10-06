@@ -43,7 +43,7 @@ class MainWindowController(QObject):
         self.main_window = main_window
         self._running = False
 
-        self.host_pass: str = None  # Store host password for connection requests
+        self.host_pass: str = ""  # Store host password for connection requests
 
         # Connect internal signals to UI methods
         self.update_status.connect(self._update_status_ui)
@@ -68,7 +68,7 @@ class MainWindowController(QObject):
             EventType.UI_SHOW_CLIENT_ID.name, self._on_client_id_received
         )
         EventBus.subscribe(
-            EventType.UI_REQUEST_HOST_PASSWORD.name, self._on_request_host_password
+            EventType.GET_HOST_PASSWORD_FROM_UI.name, self._on_request_host_password
         )
         EventBus.subscribe(
             EventType.NETWORK_CONNECTED.name, self._on_connection_established
@@ -182,7 +182,7 @@ class MainWindowController(QObject):
         """Reject incoming connection request"""
         # Publish rejection event
         EventBus.publish(
-            EventType.REFUSE_CONNECTION.name, {}, source="MainWindowController"
+            EventType.REJECT_CONNECTION.name, {}, source="MainWindowController"
         )
 
     # ====== CLIENT ACTIONS ======
@@ -230,7 +230,7 @@ class MainWindowController(QObject):
 
                 # Send password back to ConnectionService
                 EventBus.publish(
-                    "SEND_HOST_PASSWORD",
+                    EventType.UI_SEND_HOST_PASSWORD.name,
                     {
                         "controller_id": controller_id,
                         "host_id": host_id,

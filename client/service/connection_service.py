@@ -1,4 +1,4 @@
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable
 from client.network.socket_client import SocketClient
 import threading
 import logging
@@ -6,35 +6,29 @@ from client.core.event_bus import EventBus
 from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
-    ResponseConnectionPacket,
+    ConnectionResponsePacket,
     RequestPasswordPacket,
     SendPasswordPacket,
-    AuthenticationResultPacket,
+    
 )
 from common.enums import ConnectionStatus
-
 from common.enums import EventType, PacketType
 
 logger = logging.getLogger(__name__)
-
-ConnectionConfig = TypedDict(
-    "ConnectionConfig",
-    {"host": str, "port": int, "use_ssl": bool, "cert_file": str, "reconnect": bool},
-)
 
 
 class ConnectionService:
     """Dịch vụ quản lý kết nối mạng và truyền nhận dữ liệu - Pure Static Methods"""
 
     # Class variables để lưu trữ state
-    _config: ConnectionConfig | None = None
+    _config: dict | None = None
     _socket_client: SocketClient | None = None
     _lock = threading.RLock()
     _running = False
     _initialized = False
 
     @classmethod
-    def initialize(cls, config: ConnectionConfig):
+    def initialize(cls, config: dict):
         """Khởi tạo ConnectionService với config"""
         with cls._lock:
             cls._config = config
@@ -49,23 +43,20 @@ class ConnectionService:
     @classmethod
     def _setup_event_subscriptions(cls):
         """Thiết lập subscription cho các packet events"""
-        EventBus.subscribe("PACKET_ASSIGN_ID", cls._handle_assign_id_packet)
+        EventBus.subscribe(f"PACKET_{PacketType.ASSIGN_ID.name}", cls._handle_assign_id_packet)
         EventBus.subscribe(
-            "PACKET_RESPONSE_CONNECTION", cls._handle_response_connection_packet
+            f"PACKET_{PacketType.CONNECTION_RESPONSE.name}", cls._handle_response_connection_packet
         )
         EventBus.subscribe(
-            "PACKET_REQUEST_CONNECTION", cls._handle_request_connection_packet
+            f"PACKET_{PacketType.CONNECTION_REQUEST.name}", cls._handle_request_connection_packet
         )
         EventBus.subscribe(
-            "PACKET_AUTHENTICATION_REQUEST", cls._handle_request_password_packet
-        )
-        EventBus.subscribe(
-            "PACKET_AUTHENTICATION_RESULT", cls._handle_authentication_result_packet
-        )
-        EventBus.subscribe("PACKET_SEND_PASSWORD", cls._handle_send_password_packet)
-        EventBus.subscribe("PASSWORD_CORRECT", cls._handle_password_correct)
-        EventBus.subscribe("PASSWORD_INCORRECT", cls._handle_password_incorrect)
-        EventBus.subscribe("SEND_HOST_PASSWORD", cls._handle_send_host_password)
+            f"PACKET_{PacketType.REQUEST_PASSWORD.name}", cls._handle_request_password_packet
+        )       
+        EventBus.subscribe(f"PACKET_{PacketType.SEND_PASSWORD.name}", cls._handle_send_password_packet)
+        EventBus.subscribe(EventType.PASSWORD_CORRECT.name, cls._handle_password_correct)
+        EventBus.subscribe(EventType.PASSWORD_INCORRECT.name, cls._handle_password_incorrect)
+        EventBus.subscribe(EventType.UI_SEND_HOST_PASSWORD.name, cls._handle_send_host_password)
 
     @classmethod
     def start(cls):
@@ -97,6 +88,9 @@ class ConnectionService:
     def connect_to_server(cls) -> bool:
         """Kết nối đến server để nhận ID"""
         try:
+            if cls._config is None:
+                logger.error("ConnectionService config is not initialized")
+                return False
             if cls._socket_client is None:
                 cls._socket_client = SocketClient(
                     cls._config["host"],
@@ -173,8 +167,12 @@ class ConnectionService:
             logger.error("Not connected to server")
             return False
         try:
+            controller_id = cls._socket_client.client_id
+            if controller_id is None:
+                logger.error("Client ID is not assigned")
+                return False
             request_packet = ConnectionRequestPacket(
-                controller_id=cls._socket_client.client_id, host_id=host_id
+                controller_id=controller_id, host_id=host_id
             )
             success = cls._socket_client.send_packet(request_packet)
             if success:
@@ -187,29 +185,40 @@ class ConnectionService:
             return False
 
     @classmethod
-    def _handle_response_connection_packet(cls, packet: ResponseConnectionPacket):
+    def _handle_response_connection_packet(cls, packet: ConnectionResponsePacket):
         """Xử lý gói tin phản hồi kết nối từ host"""
-        if not hasattr(packet, "connection_status") or not hasattr(
-            packet, "message"
-        ):
+        if not hasattr(packet, "connection_status") or not hasattr(packet, "message"):
             logger.error("Invalid response connection packet")
             return
-        
-    
+
         logger.info("Received connection response: %s", packet.message)
-        if packet.connection_status == ConnectionStatus.FAILED:
+        # if packet.connection_status == ConnectionStatus.FAILED:
+        #     EventBus.publish(
+        #         EventType.UI_UPDATE_STATUS.name,
+        #         {"message": f"Connection failed: {packet.message}", "type": "error"},
+        #         source="ConnectionService",
+        #     )
+        # elif packet.connection_status == ConnectionStatus.REJECTED:
+        #     EventBus.publish(
+        #         EventType.UI_UPDATE_STATUS.name,
+        #         {"message": f"Connection rejected: {packet.message}", "type": "error"},
+        #         source="ConnectionService",
+        #     )
+        if packet.connection_status == ConnectionStatus.SESSION_STARTED:
             EventBus.publish(
                 EventType.UI_UPDATE_STATUS.name,
-                {"message": f"Connection failed: {packet.message}", "type": "error"},
+                {"message": "Connection established!", "type": "success"},
                 source="ConnectionService",
             )
-        elif packet.connection_status == ConnectionStatus.REJECTED:
+        else: 
             EventBus.publish(
                 EventType.UI_UPDATE_STATUS.name,
-                {"message": f"Connection rejected: {packet.message}", "type": "error"},
+                {"message": f"Connection error: {packet.message}", "type": "error"},
                 source="ConnectionService",
             )
-            
+            EventBus.publish(
+                EventType.DISCONNECTED_WITH_HOST.name, None, source="ConnectionService"
+            )
 
     @classmethod
     def _handle_request_password_packet(cls, packet: RequestPasswordPacket):
@@ -226,7 +235,7 @@ class ConnectionService:
         try:
             # Publish event để request password từ UI
             EventBus.publish(
-                EventType.UI_REQUEST_HOST_PASSWORD.name,
+                EventType.GET_HOST_PASSWORD_FROM_UI.name,
                 {"controller_id": packet.controller_id, "host_id": packet.host_id},
                 source="ConnectionService",
             )
@@ -234,42 +243,6 @@ class ConnectionService:
             # Note: Password sẽ được gửi qua event khác sau khi UI respond
         except Exception as e:
             logger.error("Error sending password: %s", e)
-
-    @classmethod
-    def _handle_authentication_result_packet(cls, packet: AuthenticationResultPacket):
-        """Xử lý gói tin kết quả xác thực"""
-        logger.debug("Received authentication result packet")
-
-        if (
-            not hasattr(packet, "controller_id")
-            or not hasattr(packet, "host_id")
-            or not hasattr(packet, "success")
-            or not hasattr(packet, "message")
-        ):
-            logger.error("Invalid authentication result packet")
-            return
-        if packet.success:
-            logger.info("Authentication successful")
-            EventBus.publish(
-                EventType.CONNECTED_TO_HOST.name,
-                {
-                    "controller_id": packet.controller_id,
-                    "host_id": packet.host_id,
-                    "success": True,
-                    "message": packet.message,
-                },
-                source="ConnectionService",
-            )
-        else:
-            logger.info("Authentication failed: %s", packet.message)
-            EventBus.publish(
-                EventType.UI_UPDATE_STATUS.name,
-                {
-                    "message": f"Authentication failed: {packet.message}",
-                    "type": "error",
-                },
-                source="ConnectionService",
-            )
 
     # ====== Host Methods ======
     @classmethod
@@ -314,11 +287,11 @@ class ConnectionService:
             logger.info(
                 "Rejecting connection request from controller %s", controller_id
             )
-            response_packet = ResponseConnectionPacket(
+            response_packet = ConnectionResponsePacket(
                 controller_id=controller_id,
                 host_id=host_id,
-                success=False,
-                message="Connection rejected",
+                connection_status=ConnectionStatus.REJECTED,
+                message="Connection rejected by host",
             )
             if cls._socket_client:
                 cls._socket_client.send_packet(response_packet)
@@ -356,14 +329,14 @@ class ConnectionService:
             logger.info("Accepted password, sending authentication success")
             controller_id = data.get("controller_id")
             host_id = data.get("host_id")
-            authenticationResultPacket = AuthenticationResultPacket(
+            connectionResponsePacket = ConnectionResponsePacket(
                 controller_id=controller_id,
                 host_id=host_id,
-                success=True,
+                connection_status=ConnectionStatus.SUCCESS,
                 message="Authentication successful",
             )
             if cls._socket_client:
-                cls._socket_client.send_packet(authenticationResultPacket)
+                cls._socket_client.send_packet(connectionResponsePacket)
                 logger.debug(
                     "Sent authentication success to controller %s", controller_id
                 )
@@ -378,14 +351,14 @@ class ConnectionService:
             logger.info("Password incorrect, sending authentication failure")
             controller_id = data.get("controller_id")
             host_id = data.get("host_id")
-            authenticationResultPacket = AuthenticationResultPacket(
+            connectionResponsePacket = ConnectionResponsePacket(
                 controller_id=controller_id,
                 host_id=host_id,
-                success=False,
+                connection_status=ConnectionStatus.INVALID_PASSWORD,
                 message="Authentication failed",
             )
             if cls._socket_client:
-                cls._socket_client.send_packet(authenticationResultPacket)
+                cls._socket_client.send_packet(connectionResponsePacket)
                 logger.debug(
                     "Sent authentication failure to controller %s", controller_id
                 )
@@ -420,7 +393,7 @@ class ConnectionService:
 
 
 # Convenience functions for easier access
-def initialize_connection_service(config: ConnectionConfig):
+def initialize_connection_service(config: dict):
     """Initialize the connection service"""
     return ConnectionService.initialize(config)
 

@@ -96,10 +96,18 @@ class RemoteDesktopClient:
             logger.info("Starting Remote Desktop Client")
             
             # Hiển thị cửa sổ chính
-            self.main_window.show()
+            if self.main_window is not None:
+                self.main_window.show()
+            else:
+                logger.error("Main window is None, cannot show.")
+                return -1
             
             # Chạy vòng lặp sự kiện của ứng dụng
-            return self.app.exec_()
+            if self.app is not None:
+                return self.app.exec_()
+            else:
+                logger.error("QApplication instance is None, cannot execute event loop.")
+                return -1
             
         except Exception as e:
             logger.error(f"Failed to start application - {e}")

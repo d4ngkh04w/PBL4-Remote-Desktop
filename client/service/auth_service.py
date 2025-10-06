@@ -12,7 +12,7 @@ class AuthService:
 
     # Class variables để lưu trữ state
     _lock = threading.RLock()
-    _my_password: str = None
+    _my_password: str = ""
     _running = False
     _initialized = False
 
@@ -23,7 +23,7 @@ class AuthService:
             if cls._initialized:
                 return
 
-            cls._my_password = None
+            cls._my_password = ""
             cls._running = False
             cls.generate_new_password()
             cls._initialized = True
@@ -37,8 +37,7 @@ class AuthService:
 
             cls._running = True
 
-            # Subscribe to events
-            EventBus.subscribe(EventType.CREATE_PASSWORD.name, cls._on_create_password)
+            # Subscribe to events         
             EventBus.subscribe(EventType.VERIFY_PASSWORD.name, cls._on_verify_password)
 
     @classmethod
@@ -50,10 +49,7 @@ class AuthService:
 
             cls._running = False
 
-            # Unsubscribe khỏi events
-            EventBus.unsubscribe(
-                EventType.CREATE_PASSWORD.name, cls._on_create_password
-            )
+            # Unsubscribe khỏi events           
             EventBus.unsubscribe(
                 EventType.VERIFY_PASSWORD.name, cls._on_verify_password
             )
@@ -82,11 +78,7 @@ class AuthService:
     def _on_create_password(cls, data):
         """Xử lý yêu cầu tạo mật khẩu mới"""
         new_password = cls.generate_new_password()
-        EventBus.publish(
-            EventType.PASSWORD_CREATED.name,
-            {"password": new_password},
-            source="AuthService",
-        )
+        
 
     @classmethod
     def _on_verify_password(cls, data):

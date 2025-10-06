@@ -9,7 +9,7 @@ from client.core.event_bus import EventBus
 from common.packets import (
     AssignIdPacket,
     ImagePacket,
-    KeyBoardPacket,
+    KeyboardPacket,
     MousePacket,
     ConnectionRequestPacket,
     RequestPasswordPacket,
@@ -88,7 +88,7 @@ class SocketClient:
             self._start_threads()
 
             EventBus.publish(
-                EventType.NETWORK_CONNECTED,
+                EventType.NETWORK_CONNECTED.name,
                 {"host": self.host, "port": self.port, "ssl": self.use_ssl},
                 source="SocketClient",
             )
@@ -99,7 +99,7 @@ class SocketClient:
             self._cleanup_connection()
 
             EventBus.publish(
-                EventType.NETWORK_CONNECTION_FAILED,
+                EventType.NETWORK_CONNECTION_FAILED.name,
                 {"host": self.host, "port": self.port, "error": str(e)},
                 source="SocketClient",
             )
@@ -119,7 +119,7 @@ class SocketClient:
         self._cleanup_connection()
 
         EventBus.publish(
-            EventType.NETWORK_DISCONNECTED,
+            EventType.NETWORK_DISCONNECTED.name,
             {"host": self.host, "port": self.port},
             source="SocketClient",
         )
@@ -128,7 +128,7 @@ class SocketClient:
         self,
         packet: Union[
             ImagePacket,
-            KeyBoardPacket,
+            KeyboardPacket,
             MousePacket,
             ConnectionRequestPacket,
             RequestPasswordPacket,
@@ -152,7 +152,7 @@ class SocketClient:
         self,
         packet: Union[
             ImagePacket,
-            KeyBoardPacket,
+            KeyboardPacket,
             MousePacket,
             ConnectionRequestPacket,
             RequestPasswordPacket,
@@ -216,7 +216,7 @@ class SocketClient:
         while self.running and not self._shutdown_event.is_set():
             try:
                 packet = self._send_queue.get(timeout=0.5)
-                if packet:
+                if packet and self.socket is not None:
                     with self._lock:
                         Protocol.send_packet(self.socket, packet)
             except Empty:
@@ -259,7 +259,7 @@ class SocketClient:
         else:
             self._cleanup_connection()
             EventBus.publish(
-                EventType.NETWORK_DISCONNECTED,
+                EventType.NETWORK_DISCONNECTED.name,
                 {"host": self.host, "port": self.port, "error": str(error)},
                 source="SocketClient",
             )
@@ -275,7 +275,7 @@ class SocketClient:
         )
 
         EventBus.publish(
-            EventType.NETWORK_RECONNECTING,
+            EventType.NETWORK_RECONNECTING.name,
             {
                 "host": self.host,
                 "port": self.port,
@@ -304,7 +304,7 @@ class SocketClient:
                 logger.error("Max reconnection attempts reached, giving up")
                 self.auto_reconnect = False
                 EventBus.publish(
-                    EventType.NETWORK_DISCONNECTED,
+                    EventType.NETWORK_DISCONNECTED.name,
                     {
                         "host": self.host,
                         "port": self.port,
