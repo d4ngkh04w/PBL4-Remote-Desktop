@@ -2,7 +2,7 @@ import threading
 import logging
 from common.password_manager import PasswordManager
 from common.enums import EventType
-from client.core.event_bus import EventBus
+from client.core.callback_manager import callback_manager
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ class AuthService:
 
             cls._running = True
 
-            # Subscribe to events         
-            EventBus.subscribe(EventType.VERIFY_PASSWORD.name, cls._on_verify_password)
+            # Register callbacks         
+            callback_manager.register_callback(EventType.VERIFY_PASSWORD.name, cls._on_verify_password)
 
     @classmethod
     def stop(cls):
@@ -49,8 +49,8 @@ class AuthService:
 
             cls._running = False
 
-            # Unsubscribe khỏi events           
-            EventBus.unsubscribe(
+            # Unregister callbacks           
+            callback_manager.unregister_callback(
                 EventType.VERIFY_PASSWORD.name, cls._on_verify_password
             )
             logger.debug("AuthService stopped")
@@ -95,7 +95,7 @@ class AuthService:
         password_to_verify = data["password"]
         is_valid = cls.verify_password(password_to_verify)
 
-        EventBus.publish(
+        callback_manager.trigger_callbacks(
             (
                 EventType.PASSWORD_CORRECT.name
                 if is_valid
@@ -105,8 +105,7 @@ class AuthService:
                 "password": password_to_verify,
                 "controller_id": data["controller_id"],
                 "host_id": data["host_id"],
-            },
-            source="AuthService",
+            }
         )
 
 

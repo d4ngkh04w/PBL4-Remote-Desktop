@@ -2,14 +2,13 @@ from typing import Any, Callable
 from client.network.socket_client import SocketClient
 import threading
 import logging
-from client.core.event_bus import EventBus
+from client.core.callback_manager import callback_manager
 from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
     RequestPasswordPacket,
     SendPasswordPacket,
-    
 )
 from common.enums import ConnectionStatus
 from common.enums import EventType, PacketType
@@ -43,20 +42,33 @@ class ConnectionService:
     @classmethod
     def _setup_event_subscriptions(cls):
         """Thiết lập subscription cho các packet events"""
-        EventBus.subscribe(f"PACKET_{PacketType.ASSIGN_ID.name}", cls._handle_assign_id_packet)
-        EventBus.subscribe(
-            f"PACKET_{PacketType.CONNECTION_RESPONSE.name}", cls._handle_response_connection_packet
+        callback_manager.register_callback(
+            f"PACKET_{PacketType.ASSIGN_ID.name}", cls._handle_assign_id_packet
         )
-        EventBus.subscribe(
-            f"PACKET_{PacketType.CONNECTION_REQUEST.name}", cls._handle_request_connection_packet
+        callback_manager.register_callback(
+            f"PACKET_{PacketType.CONNECTION_RESPONSE.name}",
+            cls._handle_response_connection_packet,
         )
-        EventBus.subscribe(
-            f"PACKET_{PacketType.REQUEST_PASSWORD.name}", cls._handle_request_password_packet
-        )       
-        EventBus.subscribe(f"PACKET_{PacketType.SEND_PASSWORD.name}", cls._handle_send_password_packet)
-        EventBus.subscribe(EventType.PASSWORD_CORRECT.name, cls._handle_password_correct)
-        EventBus.subscribe(EventType.PASSWORD_INCORRECT.name, cls._handle_password_incorrect)
-        EventBus.subscribe(EventType.UI_SEND_HOST_PASSWORD.name, cls._handle_send_host_password)
+        callback_manager.register_callback(
+            f"PACKET_{PacketType.CONNECTION_REQUEST.name}",
+            cls._handle_request_connection_packet,
+        )
+        callback_manager.register_callback(
+            f"PACKET_{PacketType.REQUEST_PASSWORD.name}",
+            cls._handle_request_password_packet,
+        )
+        callback_manager.register_callback(
+            f"PACKET_{PacketType.SEND_PASSWORD.name}", cls._handle_send_password_packet
+        )
+        callback_manager.register_callback(
+            EventType.PASSWORD_CORRECT.name, cls._handle_password_correct
+        )
+        callback_manager.register_callback(
+            EventType.PASSWORD_INCORRECT.name, cls._handle_password_incorrect
+        )
+        callback_manager.register_callback(
+            EventType.UI_SEND_HOST_PASSWORD.name, cls._handle_send_host_password
+        )
 
     @classmethod
     def start(cls):
@@ -101,35 +113,31 @@ class ConnectionService:
 
             success = cls._socket_client.connect()
             if success:
-                EventBus.publish(
+                callback_manager.trigger_callbacks(
                     EventType.UI_UPDATE_STATUS.name,
                     {
                         "message": "Connected to server, waiting for ID...",
                         "type": "info",
                     },
-                    source="ConnectionService",
                 )
-                EventBus.publish(
-                    EventType.NETWORK_CONNECTED.name, None, source="ConnectionService"
+                callback_manager.trigger_callbacks(
+                    EventType.NETWORK_CONNECTED.name, None
                 )
             else:
-                EventBus.publish(
+                callback_manager.trigger_callbacks(
                     EventType.UI_UPDATE_STATUS.name,
                     {
                         "message": "Failed to connect to server",
                         "type": "error",
                     },
-                    source="ConnectionService",
                 )
                 cls._socket_client = None
 
             return success
         except Exception as e:
             logger.error("Error occurred while connecting to server: %s", e)
-            EventBus.publish(
-                EventType.NETWORK_CONNECTION_FAILED.name,
-                {"error": str(e)},
-                source="ConnectionService",
+            callback_manager.trigger_callbacks(
+                EventType.NETWORK_CONNECTION_FAILED.name, {"error": str(e)}
             )
             return False
 
@@ -145,16 +153,13 @@ class ConnectionService:
     def _handle_assign_id_packet(cls, packet: AssignIdPacket):
         """Xử lý gói tin gán ID từ server"""
         if hasattr(packet, "client_id"):
-            EventBus.publish(
-                EventType.UI_SHOW_CLIENT_ID.name,
-                {"client_id": packet.client_id},
-                source="ConnectionService",
+            callback_manager.trigger_callbacks(
+                EventType.UI_SHOW_CLIENT_ID.name, {"client_id": packet.client_id}
             )
 
-            EventBus.publish(
+            callback_manager.trigger_callbacks(
                 EventType.UI_UPDATE_STATUS.name,
                 {"message": f"Ready - Your ID: {packet.client_id}", "type": "success"},
-                source="ConnectionService",
             )
         else:
             logger.error("Invalid assign ID packet received")
@@ -205,19 +210,29 @@ class ConnectionService:
         #         source="ConnectionService",
         #     )
         if packet.connection_status == ConnectionStatus.SESSION_STARTED:
-            EventBus.publish(
+            callback_manager.trigger_callbacks(
                 EventType.UI_UPDATE_STATUS.name,
                 {"message": "Connection established!", "type": "success"},
-                source="ConnectionService",
             )
-        else: 
-            EventBus.publish(
+            # Trigger session started event để controller tạo remote widget
+            callback_manager.trigger_callbacks(
+                EventType.CONNECTED_TO_HOST.name,
+                {
+                    "controller_id": (
+                        packet.controller_id
+                        if hasattr(packet, "controller_id")
+                        else None
+                    ),
+                    "host_id": packet.host_id if hasattr(packet, "host_id") else None,
+                },
+            )
+        else:
+            callback_manager.trigger_callbacks(
                 EventType.UI_UPDATE_STATUS.name,
                 {"message": f"Connection error: {packet.message}", "type": "error"},
-                source="ConnectionService",
             )
-            EventBus.publish(
-                EventType.DISCONNECTED_WITH_HOST.name, None, source="ConnectionService"
+            callback_manager.trigger_callbacks(
+                EventType.DISCONNECTED_WITH_HOST.name, None
             )
 
     @classmethod
@@ -233,11 +248,10 @@ class ConnectionService:
             logger.error("Not connected to server")
             return
         try:
-            # Publish event để request password từ UI
-            EventBus.publish(
+            # Trigger event để request password từ UI
+            callback_manager.trigger_callbacks(
                 EventType.GET_HOST_PASSWORD_FROM_UI.name,
                 {"controller_id": packet.controller_id, "host_id": packet.host_id},
-                source="ConnectionService",
             )
 
             # Note: Password sẽ được gửi qua event khác sau khi UI respond
@@ -255,13 +269,12 @@ class ConnectionService:
         logger.info(
             "Received connection request from controller %s", packet.controller_id
         )
-        EventBus.publish(
-            EventType.UI_SHOW_NOTIFICATION.name,
+        callback_manager.trigger_callbacks(
+            EventType.UI_SHOW_NOTIFICATION_SUGGESTION.name,
             {
                 "controller_id": packet.controller_id,
                 "host_id": packet.host_id,
             },
-            source="ConnectionService",
         )
 
     @classmethod
@@ -312,14 +325,13 @@ class ConnectionService:
             logger.error("Invalid send password packet")
             return
 
-        EventBus.publish(
+        callback_manager.trigger_callbacks(
             EventType.VERIFY_PASSWORD.name,
             {
                 "controller_id": packet.controller_id,
                 "host_id": packet.host_id,
                 "password": packet.password,
             },
-            source="ConnectionService",
         )
 
     @classmethod

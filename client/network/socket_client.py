@@ -5,7 +5,7 @@ import logging
 import threading
 from typing import Any, Optional, Union
 from common.enums import EventType
-from client.core.event_bus import EventBus
+from client.core.callback_manager import callback_manager
 from common.packets import (
     AssignIdPacket,
     ImagePacket,
@@ -13,7 +13,7 @@ from common.packets import (
     MousePacket,
     ConnectionRequestPacket,
     RequestPasswordPacket,
-    SendPasswordPacket,    
+    SendPasswordPacket,
     FrameUpdatePacket,
     ConnectionResponsePacket,
 )
@@ -87,10 +87,9 @@ class SocketClient:
             # Start worker threads
             self._start_threads()
 
-            EventBus.publish(
+            callback_manager.trigger_callbacks(
                 EventType.NETWORK_CONNECTED.name,
                 {"host": self.host, "port": self.port, "ssl": self.use_ssl},
-                source="SocketClient",
             )
             return True
 
@@ -98,10 +97,9 @@ class SocketClient:
             logger.error(f"Failed to connect to server {self.host}:{self.port} - {e}")
             self._cleanup_connection()
 
-            EventBus.publish(
+            callback_manager.trigger_callbacks(
                 EventType.NETWORK_CONNECTION_FAILED.name,
                 {"host": self.host, "port": self.port, "error": str(e)},
-                source="SocketClient",
             )
             return False
 
@@ -118,10 +116,8 @@ class SocketClient:
 
         self._cleanup_connection()
 
-        EventBus.publish(
-            EventType.NETWORK_DISCONNECTED.name,
-            {"host": self.host, "port": self.port},
-            source="SocketClient",
+        callback_manager.trigger_callbacks(
+            EventType.NETWORK_DISCONNECTED.name, {"host": self.host, "port": self.port}
         )
 
     def send_packet(
@@ -228,7 +224,7 @@ class SocketClient:
         logger.debug("Sender thread stopped")
 
     def _handle_received_packet(self, packet: Any):
-        """Chỉ publish packet qua EventBus, không xử lý logic nghiệp vụ"""
+        """Chỉ trigger callback qua CallbackManager, không xử lý logic nghiệp vụ"""
         try:
             if not packet or not hasattr(packet, "packet_type"):
                 logger.error("Invalid packet received: %s", packet)
@@ -239,9 +235,9 @@ class SocketClient:
                 self.client_id = packet.client_id
                 logger.debug("Client ID assigned: %s", self.client_id)
 
-            # Publish packet với event type dựa trên packet type
+            # Trigger callback với event type dựa trên packet type
             event_type = f"PACKET_{packet.packet_type.name}"
-            EventBus.publish(event_type, packet, source="SocketClient")
+            callback_manager.trigger_callbacks(event_type, packet)
 
         except Exception as e:
             logger.error(f"Error handling received packet - {e}")
@@ -258,10 +254,9 @@ class SocketClient:
             self._attempt_reconnect()
         else:
             self._cleanup_connection()
-            EventBus.publish(
+            callback_manager.trigger_callbacks(
                 EventType.NETWORK_DISCONNECTED.name,
                 {"host": self.host, "port": self.port, "error": str(error)},
-                source="SocketClient",
             )
 
     def _attempt_reconnect(self):
@@ -274,7 +269,7 @@ class SocketClient:
             f"Attempting to reconnect in {delay:.1f} seconds (Attempt {self._reconnect_attempts}/{self.max_retries})"
         )
 
-        EventBus.publish(
+        callback_manager.trigger_callbacks(
             EventType.NETWORK_RECONNECTING.name,
             {
                 "host": self.host,
@@ -283,7 +278,6 @@ class SocketClient:
                 "max_retries": self.max_retries,
                 "delay": delay,
             },
-            source="SocketClient",
         )
 
         threading.Timer(delay, self._do_reconnect).start()
@@ -303,14 +297,13 @@ class SocketClient:
             else:
                 logger.error("Max reconnection attempts reached, giving up")
                 self.auto_reconnect = False
-                EventBus.publish(
+                callback_manager.trigger_callbacks(
                     EventType.NETWORK_DISCONNECTED.name,
                     {
                         "host": self.host,
                         "port": self.port,
                         "error": "Max reconnection attempts reached",
                     },
-                    source="SocketClient",
                 )
 
     def _cleanup_connection(self):

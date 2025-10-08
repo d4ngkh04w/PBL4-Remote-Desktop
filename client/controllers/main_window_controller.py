@@ -1,13 +1,13 @@
 import logging
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, Qt
 
 import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from client.core.event_bus import EventBus
+from client.core.callback_manager import callback_manager
 from client.service.auth_service import get_auth_service
 from common.utils import format_numeric_id
 from common.enums import EventType
@@ -23,7 +23,7 @@ class MainWindowController(QObject):
 
     Responsibilities:
     - Handle UI events and user interactions
-    - Subscribe to EventBus for service updates
+    - Subscribe to CallbackManager for service updates
     - Coordinate between UI and services
     - Manage UI state changes
     - Show dialogs and messages
@@ -35,8 +35,9 @@ class MainWindowController(QObject):
     show_connection_request = pyqtSignal(
         str, str, str
     )  # controller_id, host_id, formatted_id
-    show_connection_result = pyqtSignal(bool, str)  # success, message
     enable_tabs = pyqtSignal(bool)  # enable controller tab
+    show_notification = pyqtSignal(str, str)  # message, type
+    create_remote_widget = pyqtSignal()  # signal to create remote widget
 
     def __init__(self, main_window):
         super().__init__()
@@ -49,8 +50,9 @@ class MainWindowController(QObject):
         self.update_status.connect(self._update_status_ui)
         self.update_id_display.connect(self._update_id_display_ui)
         self.show_connection_request.connect(self._show_connection_request_dialog)
-        self.show_connection_result.connect(self._show_connection_result_ui)
         self.enable_tabs.connect(self._enable_tabs_ui)
+        self.show_notification.connect(self._show_notification_dialog)
+        self.create_remote_widget.connect(self._create_remote_desktop_widget)
 
     def start(self):
         """Start the controller and subscribe to events"""
@@ -59,25 +61,37 @@ class MainWindowController(QObject):
 
         self._running = True
 
-        # Subscribe to EventBus events
-        EventBus.subscribe(EventType.UI_UPDATE_STATUS.name, self._on_ui_update_status)
-        EventBus.subscribe(
-            EventType.UI_SHOW_NOTIFICATION.name, self._on_ui_show_notification
+        # Register callbacks
+        callback_manager.register_callback(
+            EventType.UI_UPDATE_STATUS.name, self._on_ui_update_status
         )
-        EventBus.subscribe(
+        callback_manager.register_callback(
+            EventType.UI_SHOW_NOTIFICATION_SUGGESTION.name,
+            self._on_ui_show_notification_suggestion,
+        )
+        callback_manager.register_callback(
             EventType.UI_SHOW_CLIENT_ID.name, self._on_client_id_received
         )
-        EventBus.subscribe(
+        callback_manager.register_callback(
             EventType.GET_HOST_PASSWORD_FROM_UI.name, self._on_request_host_password
         )
-        EventBus.subscribe(
+        callback_manager.register_callback(
             EventType.NETWORK_CONNECTED.name, self._on_connection_established
         )
-        EventBus.subscribe(
+        callback_manager.register_callback(
             EventType.NETWORK_CONNECTION_FAILED.name, self._on_connection_failed
         )
-        EventBus.subscribe(
+        callback_manager.register_callback(
             EventType.NETWORK_DISCONNECTED.name, self._on_connection_lost
+        )
+        callback_manager.register_callback(
+            EventType.UI_SHOW_NOTIFICATION.name, self._on_ui_show_notification
+        )
+        callback_manager.register_callback(
+            EventType.CONNECTED_TO_HOST.name, self._on_connected_to_host
+        )
+        callback_manager.register_callback(
+            EventType.DISCONNECTED_WITH_HOST.name, self._on_disconnected_with_host
         )
 
         logger.info("MainWindowController started")
@@ -180,10 +194,8 @@ class MainWindowController(QObject):
 
     def reject_connection_request(self, controller_id: str, host_id: str):
         """Reject incoming connection request"""
-        # Publish rejection event
-        EventBus.publish(
-            EventType.REJECT_CONNECTION.name, {}, source="MainWindowController"
-        )
+        # Trigger rejection callback
+        callback_manager.trigger_callbacks(EventType.REJECT_CONNECTION.name, {})
 
     # ====== CLIENT ACTIONS ======
 
@@ -210,13 +222,19 @@ class MainWindowController(QObject):
             status_type = data.get("type", "info")
             self.update_status.emit(message, status_type)
 
-    def _on_ui_show_notification(self, data):
+    def _on_ui_show_notification_suggestion(self, data):
         """Handle UI notification display requests"""
         if isinstance(data, dict):
             controller_id = str(data.get("controller_id", ""))
             host_id = str(data.get("host_id", ""))
             formatted_id = data.get("formatted_controller_id", controller_id)
             self.show_connection_request.emit(controller_id, host_id, formatted_id)
+
+    def _on_ui_show_notification(self, data):
+        """Handle UI notification display requests"""
+        if isinstance(data, dict):
+            message = data.get("message", "Notification")
+            self.show_notification.emit(message, data.get("type", "info"))
 
     def _on_request_host_password(self, data):
         """Handle request for host password from ConnectionService"""
@@ -229,14 +247,13 @@ class MainWindowController(QObject):
                 password = self.main_window.host_pass_input.text().strip()
 
                 # Send password back to ConnectionService
-                EventBus.publish(
+                callback_manager.trigger_callbacks(
                     EventType.UI_SEND_HOST_PASSWORD.name,
                     {
                         "controller_id": controller_id,
                         "host_id": host_id,
                         "password": password,
                     },
-                    source="MainWindowController",
                 )
             else:
                 logger.error("No host_pass_input found in main_window")
@@ -263,6 +280,20 @@ class MainWindowController(QObject):
                 host_id = str(data.get("host_id", ""))
                 formatted_id = data.get("formatted_controller_id", controller_id)
                 self.show_connection_request.emit(controller_id, host_id, formatted_id)
+
+    def _on_connected_to_host(self, data):
+        """Handle successful connection to host - show remote desktop"""
+        logger.info("Connected to host successfully, creating remote desktop widget")
+        # Use signal to create widget in main thread
+        self.create_remote_widget.emit()
+        self.update_status.emit("✅ Connected - Remote desktop active", "success")
+
+    def _on_disconnected_with_host(self, data):
+        """Handle disconnection from host - reset UI"""
+        logger.info("Disconnected from host, resetting UI")
+        self._close_remote_desktop()
+        self.reset_connect_button()
+        self.update_status.emit("Disconnected from host", "warning")
 
     # ====== UI UPDATE METHODS (THREAD-SAFE) ======
 
@@ -314,18 +345,14 @@ class MainWindowController(QObject):
         else:
             ConnectionService._reject_connection_request(controller_id, host_id)
 
-    def _show_connection_result_ui(self, success: bool, message: str):
-        """Show connection result in main thread"""
-        if success:
-            # Success will be handled by session start event
-            pass
+    def _show_notification_dialog(self, message: str, notif_type: str):
+        """Show notification message in main thread"""
+        if notif_type == "error":
+            QMessageBox.critical(self.main_window, "Error", message)
+        elif notif_type == "warning":
+            QMessageBox.warning(self.main_window, "Warning", message)
         else:
-            self.reset_connect_button()
-            QMessageBox.critical(
-                self.main_window,
-                "Connection Failed",
-                f"Failed to connect to partner:\n{message}",
-            )
+            QMessageBox.information(self.main_window, "Information", message)
 
     def _enable_tabs_ui(self, enable: bool):
         """Enable/disable tabs in main thread"""
@@ -354,23 +381,36 @@ class MainWindowController(QObject):
         self.enable_tabs.emit(False)
 
     def _create_remote_desktop_widget(self):
-        """Create remote desktop widget for controller"""
+        """Create remote desktop widget for controller in a new resizable window"""
         try:
             # Import RemoteWidget
-            from gui.remote_widget import RemoteWidget
+            from client.gui.remote_widget import RemoteWidget
 
-            self.main_window.remote_widget = RemoteWidget(self.main_window)
+            # Get socket client from ConnectionService
+            socket_client = ConnectionService._socket_client
+
+            if not socket_client:
+                logger.error("No socket client available for remote widget")
+                self.reset_connect_button()
+                return
+
+            # Create remote widget as a standalone window (no parent)
+            self.main_window.remote_widget = RemoteWidget(socket_client, None)
+
+            # Set window properties for resizable window
+            self.main_window.remote_widget.setWindowTitle("Remote Desktop - PBL4")
+            self.main_window.remote_widget.resize(1024, 768)  # Set initial size
+
+            # Make it a normal resizable window - just use default window flags
+            # The default flags already provide minimize, maximize, close buttons
 
             # Connect disconnect signal from remote widget
             self.main_window.remote_widget.disconnect_requested.connect(
                 self.disconnect_from_partner
             )
 
-            # Add tab for remote desktop
-            tab_index = self.main_window.tabs.addTab(
-                self.main_window.remote_widget, "🖥️ Remote Desktop"
-            )
-            self.main_window.tabs.setCurrentIndex(tab_index)
+            # Show as normal window
+            self.main_window.remote_widget.show()
 
             # Update connect button
             if hasattr(self.main_window, "connect_btn"):
@@ -381,7 +421,9 @@ class MainWindowController(QObject):
                 )
                 self.main_window.connect_btn.setEnabled(True)
 
-            logger.info("Remote desktop widget created successfully")
+            logger.info(
+                "Remote desktop widget created successfully as resizable window"
+            )
 
         except Exception as e:
             logger.error(f"Error creating remote widget: {e}")
@@ -393,15 +435,8 @@ class MainWindowController(QObject):
             hasattr(self.main_window, "remote_widget")
             and self.main_window.remote_widget
         ):
-            # Remove remote desktop tab
-            if hasattr(self.main_window, "tabs"):
-                for i in range(self.main_window.tabs.count()):
-                    if (
-                        self.main_window.tabs.widget(i)
-                        == self.main_window.remote_widget
-                    ):
-                        self.main_window.tabs.removeTab(i)
-                        break
+            # Close the fullscreen window
+            self.main_window.remote_widget.close()
 
             # Cleanup widget
             if hasattr(self.main_window.remote_widget, "cleanup"):

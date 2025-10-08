@@ -73,7 +73,7 @@ class RelayHandler:
         if not cls.__packet_handlers:
             cls.__packet_handlers = {
                 ConnectionRequestPacket: cls.__relay_request_connection,
-                RequestPasswordPacket: cls.__relay_reques_password,
+                RequestPasswordPacket: cls.__relay_request_password,
                 SendPasswordPacket: cls.__relay_send_password,
                 ConnectionResponsePacket: cls.__handle_connection_response,
                 ImagePacket: cls.__relay_stream_packet,
@@ -118,6 +118,7 @@ class RelayHandler:
         packet: ConnectionRequestPacket,
     ):
         """Chuyển tiếp ConnectionRequestPacket"""
+        logger.debug(f"Relaying ConnectionRequestPacket: {packet}")
         controller_id = packet.controller_id
         controller_queue = ClientManager.get_client_queue(controller_id)
         if not controller_queue:
