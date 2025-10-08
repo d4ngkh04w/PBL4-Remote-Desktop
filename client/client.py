@@ -2,8 +2,7 @@ import logging
 from PyQt5.QtWidgets import QApplication
 from client.gui.main_window import MainWindow
 from client.service.auth_service import AuthService
-from client.service.connection_service import ConnectionService
-from client.core.callback_manager import callback_manager
+from client.network.socket_client import SocketClient
 import sys
 
 
@@ -26,7 +25,7 @@ class RemoteDesktopClient:
         self.main_window = None
 
         self.auth_service = None
-        self.connection_service = None
+        self.socket_client = None
 
     def initialize_qt_application(self):
         """Khởi tạo ứng dụng"""
@@ -41,30 +40,31 @@ class RemoteDesktopClient:
         return True
 
     def initialize_services(self):
-        """Khởi tạo các dịch vụ"""
+        """Khởi tạo các dịch vụ (chưa kết nối)"""
         try:
-            # Không cần khởi động EventBus nữa
+            # Khởi tạo Authentication Service
+            self.auth_service = AuthService()
 
-            # Tạo AuthService
-            AuthService.initialize()
-            AuthService.start()
-
-            # Tạo ConnectionService
-            connection_config = {
-                "host": self.server_host,
-                "port": self.server_port,
-                "use_ssl": self.use_ssl,
-                "cert_file": self.cert_file,
-                "reconnect": True,
-            }
-
-            # Sử dụng class methods thay vì instance
-            ConnectionService.initialize(connection_config)
-            ConnectionService.start()
+            # Khởi tạo Socket Client (chưa kết nối)
+            self.socket_client = SocketClient(
+                self.server_host, self.server_port, self.use_ssl, self.cert_file
+            )
 
             return True
         except Exception as e:
             logger.error(f"Failed to initialize services - {e}")
+            return False
+
+    def connect_to_server(self):
+        """Kết nối đến server sau khi UI đã sẵn sàng"""
+        try:
+            logger.info(f"Connecting to server at {self.server_host}:{self.server_port}")
+            if not self.socket_client.connect():
+                logger.warning("Initial connection failed, but auto-reconnect is enabled")
+                # Không return False ở đây vì auto-reconnect sẽ chạy background
+            return True
+        except Exception as e:
+            logger.error(f"Failed to connect to server - {e}")
             return False
 
     def create_main_window(self):
@@ -83,21 +83,23 @@ class RemoteDesktopClient:
             if not self.initialize_qt_application():
                 return -1
 
-            # Khởi tạo Services
+            # Khởi tạo Services (chưa kết nối)
             if not self.initialize_services():
                 return -1
 
-            # Tạo main window
+            # Tạo main window trước
             if not self.create_main_window():
                 return -1
-
-            logger.info("Starting Remote Desktop Client")
 
             # Hiển thị cửa sổ chính
             if self.main_window is not None:
                 self.main_window.show()
             else:
                 logger.error("Main window is None, cannot show.")
+                return -1
+
+            # Kết nối đến server sau khi UI đã sẵn sàng
+            if not self.connect_to_server():
                 return -1
 
             # Chạy vòng lặp sự kiện của ứng dụng
@@ -114,19 +116,10 @@ class RemoteDesktopClient:
             return -1
 
     def cleanup(self):
-        """Dọn dẹp tài nguyên khi tắt ứng dụng"""
+        """Dọn dẹp tài nguyên"""
         try:
-            logger.info("Starting application cleanup...")
-
-            # Dừng main window trước
-            if self.main_window:
-                self.main_window.cleanup()
-                logger.info("Main window cleaned up successfully.")
-
-            ConnectionService.stop()
-            AuthService.stop()
-            # Không cần dừng EventBus nữa
-
-            logger.info("Application cleanup completed successfully.")
+            if self.socket_client:
+                self.socket_client.disconnect()
+                self.socket_client = None
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error(f"Error during cleanup - {e}")

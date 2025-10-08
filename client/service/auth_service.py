@@ -1,8 +1,9 @@
 import threading
 import logging
+from common.packets import AssignIdPacket
 from common.password_manager import PasswordManager
 from common.enums import EventType
-from client.core.callback_manager import callback_manager
+from common.enums import PacketType
 
 logger = logging.getLogger(__name__)
 
@@ -11,120 +12,45 @@ class AuthService:
     """Pure static service quản lý xác thực và mật khẩu"""
 
     # Class variables để lưu trữ state
-    _lock = threading.RLock()
     _my_password: str = ""
-    _running = False
-    _initialized = False
-
-    @classmethod
-    def initialize(cls):
-        """Khởi tạo AuthService"""
-        with cls._lock:
-            if cls._initialized:
-                return
-
-            cls._my_password = ""
-            cls._running = False
-            cls.generate_new_password()
-            cls._initialized = True
-
-    @classmethod
-    def start(cls):
-        """Bắt đầu AuthService"""
-        with cls._lock:
-            if cls._running:
-                return
-
-            cls._running = True
-
-            # Register callbacks         
-            callback_manager.register_callback(EventType.VERIFY_PASSWORD.name, cls._on_verify_password)
-
-    @classmethod
-    def stop(cls):
-        """Dừng AuthService"""
-        with cls._lock:
-            if not cls._running:
-                return
-
-            cls._running = False
-
-            # Unregister callbacks           
-            callback_manager.unregister_callback(
-                EventType.VERIFY_PASSWORD.name, cls._on_verify_password
-            )
-            logger.debug("AuthService stopped")
+    _my_id: str = ""
+    _partner_id: str = ""
 
     @classmethod
     def generate_new_password(cls) -> str:
         """Tạo mật khẩu mới"""
-        with cls._lock:
-            cls._my_password = PasswordManager.generate_password()
-            return cls._my_password
+        cls._my_password = PasswordManager.generate_password()
+        return cls._my_password
 
     @classmethod
     def get_current_password(cls) -> str:
         """Lấy mật khẩu hiện tại"""
-        with cls._lock:
-            return cls._my_password
+        return cls._my_password
 
     @classmethod
     def verify_password(cls, password: str) -> bool:
         """Xác minh mật khẩu"""
-        with cls._lock:
-            return cls._my_password == password
+        return cls._my_password == password
 
     @classmethod
-    def _on_create_password(cls, data):
-        """Xử lý yêu cầu tạo mật khẩu mới"""
-        new_password = cls.generate_new_password()
-        
+    def set_client_id(cls, client_id: str):
+        """Set client ID từ server"""
+        cls._my_id = client_id
+        logger.debug(f"Set client ID: {cls._my_id}")
 
     @classmethod
-    def _on_verify_password(cls, data):
-        """Xử lý yêu cầu xác minh mật khẩu"""
-        if (
-            not data
-            or "password" not in data
-            or "controller_id" not in data
-            or "host_id" not in data
-        ):
-            logger.error("Invalid password verification request")
-            return
+    def get_client_id(cls) -> str:
+        """Lấy client ID đã được gán"""
+        return cls._my_id
 
-        password_to_verify = data["password"]
-        is_valid = cls.verify_password(password_to_verify)
 
-        callback_manager.trigger_callbacks(
-            (
-                EventType.PASSWORD_CORRECT.name
-                if is_valid
-                else EventType.PASSWORD_INCORRECT.name
-            ),
-            {
-                "password": password_to_verify,
-                "controller_id": data["controller_id"],
-                "host_id": data["host_id"],
-            }
-        )
+# Initialize password when module is loaded
+AuthService.generate_new_password()
 
 
 # Convenience functions để dễ sử dụng
-def get_auth_service():
-    """Trả về class AuthService để dùng như singleton"""
-    return AuthService
 
 
-def initialize_auth_service():
-    """Initialize AuthService"""
-    return AuthService.initialize()
-
-
-def start_auth_service():
-    """Start AuthService"""
-    return AuthService.start()
-
-
-def stop_auth_service():
-    """Stop AuthService"""
-    return AuthService.stop()
+def get_client_id():
+    """Lấy client ID đã được gán"""
+    return AuthService.get_client_id()

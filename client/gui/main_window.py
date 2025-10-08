@@ -2,12 +2,6 @@
 Main window for client-new architecture.
 Updated to use EventBus and new controller/service architecture.
 """
-
-# import sys
-# import os
-
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -69,9 +63,7 @@ class MainWindow(QMainWindow):
         # Initialize password display
         if self.password_display:
             self.password_display.setText(AuthService.get_current_password())
-
-        # Connect to server after everything is ready
-        self.controller.connect_to_server()
+       
 
     def init_ui(self):
         """Khởi tạo giao diện người dùng"""

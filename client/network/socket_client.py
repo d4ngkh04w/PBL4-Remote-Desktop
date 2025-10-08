@@ -3,41 +3,39 @@ import socket
 import ssl
 import logging
 import threading
-from typing import Any, Optional, Union
-from common.enums import EventType
-from client.core.callback_manager import callback_manager
+from typing import Any
 from common.packets import (
     AssignIdPacket,
-    ImagePacket,
-    KeyboardPacket,
-    MousePacket,
     ConnectionRequestPacket,
+    ConnectionResponsePacket,
     RequestPasswordPacket,
     SendPasswordPacket,
-    FrameUpdatePacket,
-    ConnectionResponsePacket,
 )
 from common.protocol import Protocol
-
+from client.controllers.main_window_controller import MainWindowController
+from client.service.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
 
 class SocketClient:
+    # Class variable để lưu instance hiện tại
+    _current_instance = None
+    _lock = threading.RLock()
+
     def __init__(self, server_host, server_port, use_ssl, cert_file):
         self.host = server_host
         self.port = server_port
         self.use_ssl = use_ssl
         self.cert_file = cert_file
 
-        # Threading
+        # Socket và thread state
+        self.socket = None
         self.running = False
         self.listener_thread = None
         self.sender_thread = None
-        self._disconnected = False
 
-        # Thread-safe operations
-        self._lock = threading.RLock()
+        # Thread control
         self._send_queue = Queue()
         self._shutdown_event = threading.Event()
 
@@ -46,16 +44,64 @@ class SocketClient:
         self.max_retries = 5
         self.retry_delay = 2
         self.reconnect_backoff = 1.5
-        self._reconnect_attempts = 0
 
-        # Client ID - sẽ được gán khi kết nối thành công
-        self.client_id: Optional[str] = None
+        # Reconnection state
+        self._reconnect_attempts = 0
+        self._is_connecting = False  # Đang trong quá trình connect/reconnect
+        self._manually_disconnected = False  # User chủ động disconnect
+
+        # Set as current instance
+        with SocketClient._lock:
+            SocketClient._current_instance = self
 
     def connect(self) -> bool:
         """
-        Kết nối đến server
+        Kết nối đến server. Nếu thất bại sẽ tự động thử reconnect.
+        """
+        with SocketClient._lock:
+            if self._is_connecting:
+                logger.warning("Already connecting/reconnecting")
+                return False
+            self._is_connecting = True
+            self._manually_disconnected = False
+
+        # Thử kết nối
+        if self._attempt_connect():
+            return True
+
+        # Kết nối thất bại, bắt đầu reconnect nếu được phép
+        if self.auto_reconnect:
+            logger.info("Initial connection failed, starting reconnect process")
+            self._start_reconnect_process()
+            return False  # Trả về False nhưng reconnect sẽ chạy background
+        else:
+            # Không auto reconnect, báo lỗi ngay
+            with SocketClient._lock:
+                self._is_connecting = False
+            MainWindowController.on_connection_failed()
+            return False
+
+    def disconnect(self):
+        """
+        Ngắt kết nối do user yêu cầu
+        """
+        with SocketClient._lock:
+            self._manually_disconnected = True
+            self.auto_reconnect = False
+            self.running = False
+            self._shutdown_event.set()
+
+        logger.info(f"Manually disconnecting from {self.host}:{self.port}")
+        self._cleanup_connection()
+
+        MainWindowController.on_connection_disconnected()
+
+    def _attempt_connect(self) -> bool:
+        """
+        Thực hiện kết nối socket
         """
         try:
+            # Tạo socket
             plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
             if self.use_ssl:
@@ -70,109 +116,148 @@ class SocketClient:
                 self.socket = context.wrap_socket(
                     plain_socket, server_hostname=self.host
                 )
-                logger.info("SSL enabled: using secure connection")
+                logger.debug("SSL enabled: using secure connection")
             else:
                 self.socket = plain_socket
-                logger.info("SSL disabled: using plain TCP connection")
+                logger.debug("SSL disabled: using plain TCP connection")
 
-            self.socket.settimeout(10)  # Thiết lập timeout 10 giây cho kết nối
+            # Kết nối
+            self.socket.settimeout(10)
             self.socket.connect((self.host, self.port))
             logger.info(f"Connected to server at {self.host}:{self.port}")
 
-            with self._lock:
+            # Setup state cho kết nối thành công
+            with SocketClient._lock:
                 self.running = True
-                self._disconnected = False
+                self._is_connecting = False
+                self._reconnect_attempts = 0
                 self._shutdown_event.clear()
 
-            # Start worker threads
+            # Bắt đầu các thread
             self._start_threads()
 
-            callback_manager.trigger_callbacks(
-                EventType.NETWORK_CONNECTED.name,
-                {"host": self.host, "port": self.port, "ssl": self.use_ssl},
-            )
+            # Thông báo kết nối thành công
+            MainWindowController.on_connection_established()
+
             return True
 
         except Exception as e:
-            logger.error(f"Failed to connect to server {self.host}:{self.port} - {e}")
-            self._cleanup_connection()
-
-            callback_manager.trigger_callbacks(
-                EventType.NETWORK_CONNECTION_FAILED.name,
-                {"host": self.host, "port": self.port, "error": str(e)},
-            )
+            logger.error(f"Failed to connect to {self.host}:{self.port} - {e}")
+            if self.socket:
+                try:
+                    self.socket.close()
+                except:
+                    pass
+                self.socket = None
             return False
 
-    def disconnect(self):
-        """Ngắt kết nối khỏi server"""
-        with self._lock:
-            if not self.running:
-                return
-            logger.info(f"Disconnecting from server {self.host}:{self.port}")
-            self.running = False
-            self._disconnected = True
-            self.auto_reconnect = False
-            self._shutdown_event.set()
+    def _start_reconnect_process(self):
+        """
+        Bắt đầu quá trình reconnect trong thread riêng
+        """
+        reconnect_thread = threading.Thread(target=self._reconnect_loop, daemon=True)
+        reconnect_thread.start()
 
+    def _reconnect_loop(self):
+        """
+        Vòng lặp thử kết nối lại
+        """
+        while self._reconnect_attempts < self.max_retries:
+            # Kiểm tra có bị cancel không
+            if self._manually_disconnected:
+                logger.info("Reconnect cancelled - manual disconnect")
+                break
+
+            self._reconnect_attempts += 1
+            delay = self.retry_delay * (
+                self.reconnect_backoff ** (self._reconnect_attempts - 1)
+            )
+
+            logger.debug(
+                f"Reconnecting in {delay:.1f}s (attempt {self._reconnect_attempts}/{self.max_retries})"
+            )
+
+            # Thông báo đang reconnect
+            data = {
+                "attempt": self._reconnect_attempts,
+            }
+            MainWindowController.on_connection_reconnecting(data)
+
+            # Chờ delay hoặc cancel signal
+            if self._shutdown_event.wait(timeout=delay):
+                if self._manually_disconnected:
+                    logger.info("Reconnect cancelled during delay")
+                    break
+
+            if self._attempt_connect():
+                logger.info("Reconnected successfully!")
+                return
+
+        # Hết số lần thử
+        logger.error("Max reconnection attempts reached")
+        with SocketClient._lock:
+            self._is_connecting = False
+            self.auto_reconnect = False
+
+        MainWindowController.on_connection_failed()
+
+    def _handle_connection_lost(self, error: Exception):
+        """
+        Xử lý khi mất kết nối trong quá trình hoạt động
+        """
+        logger.error(f"Connection lost - {error}")
+
+        with SocketClient._lock:
+            if not self.running or self._manually_disconnected or self._is_connecting:
+                return  # Đã xử lý rồi hoặc đang reconnect
+
+            self.running = False
+            self._is_connecting = True  # Bắt đầu reconnect
+
+        # Cleanup connection cũ
         self._cleanup_connection()
 
-        callback_manager.trigger_callbacks(
-            EventType.NETWORK_DISCONNECTED.name, {"host": self.host, "port": self.port}
-        )
+        # Bắt đầu reconnect nếu được phép
+        if self.auto_reconnect:
+            logger.info("Starting reconnect after connection lost")
+            self._start_reconnect_process()
+        else:
+            with SocketClient._lock:
+                self._is_connecting = False
+            MainWindowController.on_connection_failed()
 
-    def send_packet(
-        self,
-        packet: Union[
-            ImagePacket,
-            KeyboardPacket,
-            MousePacket,
-            ConnectionRequestPacket,
-            RequestPasswordPacket,
-            ConnectionResponsePacket,
-            SendPasswordPacket,
-            FrameUpdatePacket,
-        ],
-    ) -> bool:
-        """Gửi packet đến server"""
-        if self.socket is None or not self.running:
-            logger.warning("Not connected to server")
-            return False
+    @classmethod
+    def send_packet(cls, packet) -> bool:
+        """Gửi packet qua queue"""
+        with cls._lock:
+            if not cls._current_instance or not cls._current_instance.running:
+                logger.warning("Not connected to server")
+                return False
+
         try:
-            self._send_queue.put(packet, timeout=1)
+            cls._current_instance._send_queue.put(packet, timeout=1)
             return True
         except Exception as e:
-            logger.error(f"Failed to queue data to send to server - {e}")
+            logger.error(f"Failed to queue packet - {e}")
             return False
 
-    def send_packet_sync(
-        self,
-        packet: Union[
-            ImagePacket,
-            KeyboardPacket,
-            MousePacket,
-            ConnectionRequestPacket,
-            RequestPasswordPacket,
-            ConnectionResponsePacket,
-            SendPasswordPacket,
-            FrameUpdatePacket,
-        ],
-    ) -> bool:
-        """Gửi packet đến server ngay lập tức (không qua hàng đợi)"""
-        if self.socket is None or not self.running:
+    def send_packet_sync(self, packet) -> bool:
+        """Gửi packet trực tiếp"""
+        if not self.running or self.socket is None:
             logger.warning("Not connected to server")
-            self.disconnect()
             return False
+
         try:
-            with self._lock:
+            with SocketClient._lock:
                 Protocol.send_packet(self.socket, packet)
             return True
         except Exception as e:
-            logger.error(f"Failed to send data to server - {e}")
-            self._handle_connection_error(e)
+            logger.error(f"Failed to send packet - {e}")
+            self._handle_connection_lost(e)
             return False
 
     def _start_threads(self):
-        """Bắt đầu các luồng xử lý"""
+        """Bắt đầu listener và sender threads"""
         self.listener_thread = threading.Thread(target=self._listener_loop, daemon=True)
         self.listener_thread.start()
 
@@ -180,17 +265,14 @@ class SocketClient:
         self.sender_thread.start()
 
     def _listener_loop(self):
-        """Vòng lặp lắng nghe dữ liệu từ server"""
+        """Thread lắng nghe dữ liệu từ server"""
         logger.debug("Listener thread started")
 
         while self.running and not self._shutdown_event.is_set():
             try:
                 if self.socket is None:
-                    logger.warning("Not connected to server")
-                    self.disconnect()
-                    return
+                    break
 
-                # Set a short timeout to allow checking the shutdown event
                 self.socket.settimeout(0.5)
                 packet = Protocol.receive_packet(self.socket)
 
@@ -200,130 +282,86 @@ class SocketClient:
             except socket.timeout:
                 continue
             except Exception as e:
-                self._handle_connection_error(e)
+                if self.running:  # Chỉ xử lý nếu đang chạy
+                    self._handle_connection_lost(e)
                 break
 
         logger.debug("Listener thread stopped")
 
     def _sender_loop(self):
-        """Vòng lặp gửi dữ liệu đến server"""
+        """Thread gửi dữ liệu đến server"""
         logger.debug("Sender thread started")
 
         while self.running and not self._shutdown_event.is_set():
             try:
                 packet = self._send_queue.get(timeout=0.5)
-                if packet and self.socket is not None:
-                    with self._lock:
+                if packet is None:  # Shutdown signal
+                    break
+
+                if self.socket is not None:
+                    with SocketClient._lock:
                         Protocol.send_packet(self.socket, packet)
+
             except Empty:
                 continue
             except Exception as e:
-                self._handle_connection_error(e)
+                if self.running:  # Chỉ xử lý nếu đang chạy
+                    self._handle_connection_lost(e)
                 break
 
         logger.debug("Sender thread stopped")
 
     def _handle_received_packet(self, packet: Any):
-        """Chỉ trigger callback qua CallbackManager, không xử lý logic nghiệp vụ"""
+        """Xử lý packet nhận được"""
         try:
             if not packet or not hasattr(packet, "packet_type"):
-                logger.error("Invalid packet received: %s", packet)
+                logger.error("Invalid packet received")
                 return
 
-            # Lưu client_id nếu đây là AssignIdPacket
-            if isinstance(packet, AssignIdPacket) and hasattr(packet, "client_id"):
-                self.client_id = packet.client_id
-                logger.debug("Client ID assigned: %s", self.client_id)
-
-            # Trigger callback với event type dựa trên packet type
-            event_type = f"PACKET_{packet.packet_type.name}"
-            callback_manager.trigger_callbacks(event_type, packet)
+            # Route packets based on type
+            if isinstance(packet, AssignIdPacket): 
+                AuthService.set_client_id(packet.client_id)
+                
+                # Update UI
+                MainWindowController.on_client_id_received(
+                    {"client_id": packet.client_id}
+                )
+                MainWindowController.on_ui_update_status(
+                    {
+                        "message": f"Ready - Your ID: {packet.client_id}",
+                        "type": "success",
+                    }
+                )
+            elif isinstance(packet, ConnectionRequestPacket):
+                from client.service.connection_service import ConnectionServiceHandlers
+                ConnectionServiceHandlers.handle_connection_request_packet(packet)
+            elif isinstance(packet, ConnectionResponsePacket):
+                from client.service.connection_service import ConnectionServiceHandlers
+                ConnectionServiceHandlers.handle_connection_response_packet(packet)
+            elif isinstance(packet, RequestPasswordPacket):
+                from client.service.connection_service import ConnectionServiceHandlers
+                ConnectionServiceHandlers.handle_request_password_packet(packet)
+            elif isinstance(packet, SendPasswordPacket):
+                from client.service.connection_service import ConnectionServiceHandlers
+                ConnectionServiceHandlers.handle_send_password_packet(packet)
+            else:
+                logger.warning(f"Unhandled packet type: {type(packet)}")
 
         except Exception as e:
-            logger.error(f"Error handling received packet - {e}")
-
-    def _handle_connection_error(self, error: Exception):
-        """Xử lý lỗi kết nối"""
-        logger.error(f"Connection error - {error}")
-
-        with self._lock:
-            if self._disconnected:
-                return
-
-        if self.auto_reconnect and self._reconnect_attempts < self.max_retries:
-            self._attempt_reconnect()
-        else:
-            self._cleanup_connection()
-            callback_manager.trigger_callbacks(
-                EventType.NETWORK_DISCONNECTED.name,
-                {"host": self.host, "port": self.port, "error": str(error)},
-            )
-
-    def _attempt_reconnect(self):
-        """Thử kết nối lại với server"""
-        self._reconnect_attempts += 1
-        delay = self.retry_delay * (
-            self.reconnect_backoff ** (self._reconnect_attempts - 1)
-        )
-        logger.info(
-            f"Attempting to reconnect in {delay:.1f} seconds (Attempt {self._reconnect_attempts}/{self.max_retries})"
-        )
-
-        callback_manager.trigger_callbacks(
-            EventType.NETWORK_RECONNECTING.name,
-            {
-                "host": self.host,
-                "port": self.port,
-                "attempt": self._reconnect_attempts,
-                "max_retries": self.max_retries,
-                "delay": delay,
-            },
-        )
-
-        threading.Timer(delay, self._do_reconnect).start()
-
-    def _do_reconnect(self):
-        """Thực hiện kết nối lại"""
-        self._cleanup_connection()
-
-        if self.connect():
-            logger.info("Reconnected successfully")
-            self._reconnect_attempts = 0
-        else:
-            logger.error("Reconnection attempt failed")
-
-            if self._reconnect_attempts < self.max_retries:
-                self._attempt_reconnect()
-            else:
-                logger.error("Max reconnection attempts reached, giving up")
-                self.auto_reconnect = False
-                callback_manager.trigger_callbacks(
-                    EventType.NETWORK_DISCONNECTED.name,
-                    {
-                        "host": self.host,
-                        "port": self.port,
-                        "error": "Max reconnection attempts reached",
-                    },
-                )
+            logger.error(f"Error handling packet - {e}")
 
     def _cleanup_connection(self):
-        """Dọn dẹp kết nối và các tài nguyên liên quan"""
-        with self._lock:
-            self.running = False
-            self._disconnected = True
-            self._shutdown_event.set()
-
-            if self.socket:
-                try:
-                    self.socket.close()
-                except Exception as e:
-                    logger.error(f"Error closing socket - {e}")
-                self.socket = None
-
+        """Dọn dẹp kết nối và threads"""
+        if self.socket:
+            try:
+                self.socket.close()
+            except Exception as e:
+                logger.error(f"Error closing socket - {e}")
+            self.socket = None
         try:
-            self._send_queue.put(None, timeout=0.1)  # Giúp thread sender thoát
-        except Exception as e:
-            logger.error(f"Error signaling sender thread to stop - {e}")
+            self._send_queue.put(None, timeout=0.1)  # Shutdown signal
+        except:
+            pass
 
         if self.listener_thread and self.listener_thread.is_alive():
             if self.listener_thread != threading.current_thread():
@@ -333,7 +371,6 @@ class SocketClient:
             if self.sender_thread != threading.current_thread():
                 self.sender_thread.join(timeout=1)
 
-        #  Clear queue
         while not self._send_queue.empty():
             try:
                 self._send_queue.get_nowait()
@@ -341,8 +378,8 @@ class SocketClient:
                 break
 
     def __del__(self):
-        """Hủy đối tượng và dọn dẹp tài nguyên"""
+        """Cleanup khi object bị destroy"""
         try:
             self.disconnect()
-        except Exception:
+        except:
             pass

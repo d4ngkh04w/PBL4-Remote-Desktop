@@ -1,5 +1,6 @@
 import lz4.frame as lz4
 
+from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget,
     QLabel,
@@ -20,8 +21,10 @@ from common.packets import ImagePacket, FrameUpdatePacket
 class RemoteWidget(QWidget):
     disconnect_requested = pyqtSignal()
 
-    def __init__(self, network_client: SocketClient, parent=None):
+    def __init__(self, network_client: Optional[SocketClient] = None, parent=None):
         super().__init__(parent)
+        # With SocketClient as singleton, we don't need to store instance
+        # Keep for backward compatibility but won't use it
         self.network_client = network_client
         self.original_width = 0
         self.original_height = 0

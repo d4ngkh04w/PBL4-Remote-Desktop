@@ -6,13 +6,9 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from client.core.callback_manager import callback_manager
-from client.service.auth_service import get_auth_service
+from client.service.auth_service import AuthService
 from common.utils import format_numeric_id
-from common.enums import EventType
 
-from client.service.connection_service import ConnectionService
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +19,13 @@ class MainWindowController(QObject):
 
     Responsibilities:
     - Handle UI events and user interactions
-    - Subscribe to CallbackManager for service updates
-    - Coordinate between UI and services
+    - Coordinate between UI and services (direct calls)
     - Manage UI state changes
     - Show dialogs and messages
     """
+
+    # Class variable to store the current instance
+    _instance = None
 
     # Signals for UI updates (run in main thread)
     update_status = pyqtSignal(str, str)  # message, type
@@ -44,6 +42,9 @@ class MainWindowController(QObject):
         self.main_window = main_window
         self._running = False
 
+        # Set as singleton instance
+        MainWindowController._instance = self
+
         self.host_pass: str = ""  # Store host password for connection requests
 
         # Connect internal signals to UI methods
@@ -55,45 +56,11 @@ class MainWindowController(QObject):
         self.create_remote_widget.connect(self._create_remote_desktop_widget)
 
     def start(self):
-        """Start the controller and subscribe to events"""
+        """Start the controller"""
         if self._running:
             return
 
         self._running = True
-
-        # Register callbacks
-        callback_manager.register_callback(
-            EventType.UI_UPDATE_STATUS.name, self._on_ui_update_status
-        )
-        callback_manager.register_callback(
-            EventType.UI_SHOW_NOTIFICATION_SUGGESTION.name,
-            self._on_ui_show_notification_suggestion,
-        )
-        callback_manager.register_callback(
-            EventType.UI_SHOW_CLIENT_ID.name, self._on_client_id_received
-        )
-        callback_manager.register_callback(
-            EventType.GET_HOST_PASSWORD_FROM_UI.name, self._on_request_host_password
-        )
-        callback_manager.register_callback(
-            EventType.NETWORK_CONNECTED.name, self._on_connection_established
-        )
-        callback_manager.register_callback(
-            EventType.NETWORK_CONNECTION_FAILED.name, self._on_connection_failed
-        )
-        callback_manager.register_callback(
-            EventType.NETWORK_DISCONNECTED.name, self._on_connection_lost
-        )
-        callback_manager.register_callback(
-            EventType.UI_SHOW_NOTIFICATION.name, self._on_ui_show_notification
-        )
-        callback_manager.register_callback(
-            EventType.CONNECTED_TO_HOST.name, self._on_connected_to_host
-        )
-        callback_manager.register_callback(
-            EventType.DISCONNECTED_WITH_HOST.name, self._on_disconnected_with_host
-        )
-
         logger.info("MainWindowController started")
 
     def stop(self):
@@ -104,59 +71,157 @@ class MainWindowController(QObject):
         self._running = False
         logger.info("MainWindowController stopped")
 
-    # ====== USER ACTIONS ======
+    # ====== METHODS FOR SIGNALS ======
+    @classmethod
+    def on_connection_established(cls):
+        """Handle connection established"""
+        if cls._instance:
+            cls._instance.update_status.emit("Connected to server", "success")
 
-    def connect_to_server(self):
-        """Handle connect to server button click"""
-        success = ConnectionService.connect_to_server()
-        if not success:
-            self.update_status.emit("Failed to connect to server", "error")
+    @classmethod
+    def on_connection_failed(cls):
+        """Handle connection failed"""
+        if cls._instance:
+            cls._instance.update_status.emit("Failed to connect to server", "error")
+            cls._instance._show_connection_error()
 
-    def _on_client_id_received(self, data):
+    @classmethod
+    def on_connection_disconnected(cls):
+        """Handle connection disconnected"""
+        if cls._instance:
+            cls._instance.update_status.emit("Disconnected from server", "warning")
+            cls._instance._show_connection_error()
+
+    @classmethod
+    def on_connection_reconnecting(cls, data):
+        """Handle reconnecting to server"""
+        if cls._instance:
+            attempts = data.get("attempt", 0) if data else 0
+            cls._instance.update_status.emit(
+                f"Reconnecting to server... ({attempts})", "info"
+            )
+
+    @classmethod
+    def on_client_id_received(cls, data):
         """Handle client ID received from server"""
+        if not cls._instance:
+            return
+
         if isinstance(data, dict):
             client_id = data.get("client_id")
             if client_id:
-                self.update_id_display.emit(format_numeric_id(client_id))
-                self.enable_tabs.emit(True)
+                cls._instance.update_id_display.emit(format_numeric_id(client_id))
+                cls._instance.enable_tabs.emit(True)
             else:
                 logger.error("No client_id found in data: %s", data)
         else:
             logger.error("Expected dict but got: %s", type(data))
+
+    @classmethod
+    def on_ui_update_status(cls, data):
+        """Handle UI status update requests"""
+        if not cls._instance:
+            return
+
+        if isinstance(data, dict):
+            message = data.get("message", "")
+            status_type = data.get("type", "info")
+            cls._instance.update_status.emit(message, status_type)
+
+    @classmethod
+    def on_ui_show_notification_suggestion(cls, data):
+        """Handle UI notification display requests"""
+        if not cls._instance:
+            return
+
+        if isinstance(data, dict):
+            controller_id = str(data.get("controller_id", ""))
+            host_id = str(data.get("host_id", ""))
+            formatted_id = data.get("formatted_controller_id", controller_id)
+            cls._instance.show_connection_request.emit(
+                controller_id, host_id, formatted_id
+            )
+
+    @classmethod
+    def on_ui_show_notification(cls, data):
+        """Handle UI notification display requests"""
+        if not cls._instance:
+            return
+
+        if isinstance(data, dict):
+            message = data.get("message", "Notification")
+            cls._instance.show_notification.emit(message, data.get("type", "info"))
+
+    # ====== CONTROLLER ACTIONS ======
+    @classmethod
+    def on_connected_to_host(cls, data):
+        """Handle successful connection to host - show remote desktop"""
+        if cls._instance:
+            logger.info(
+                "Connected to host successfully, creating remote desktop widget"
+            )
+            cls._instance.create_remote_widget.emit()
+            cls._instance.update_status.emit(
+                "✅ Connected - Remote desktop active", "success"
+            )
+
+    @classmethod
+    def on_disconnected_with_host(cls, data):
+        """Handle disconnection from host - reset UI"""
+        if cls._instance:
+            logger.info("Disconnected from host, resetting UI")
+            cls._instance._close_remote_desktop()
+            cls._instance.reset_connect_button()
+            cls._instance.update_status.emit("Disconnected from host", "warning")
+
+    @classmethod
+    def get_host_password(cls):
+        """Handle request for host password"""
+        if not cls._instance:
+            return ""
+
+        # Get password from UI input
+        if hasattr(cls._instance.main_window, "host_pass_input"):
+            password = cls._instance.main_window.host_pass_input.text().strip()
+            return password
+        else:
+            logger.error("No host_pass_input found in main_window")
+            return ""
 
     def connect_to_partner(self, host_id: str, host_pass: str):
         """Handle connect to partner request"""
         # Validation
         if not host_id:
             QMessageBox.warning(self.main_window, "Input Error", "Please enter Host ID")
-            return
+            return False
 
         if len(host_id) != 9 or not host_id.isdigit():
             QMessageBox.warning(
                 self.main_window, "Invalid ID", "Host ID must be exactly 9 digits"
             )
-            return
+            return False
 
         if not host_pass:
             QMessageBox.warning(
                 self.main_window, "Input Error", "Please enter Host Password"
             )
-            return
+            return False
 
         # Update UI state
         if hasattr(self.main_window, "connect_btn"):
             self.main_window.connect_btn.setEnabled(False)
             self.main_window.connect_btn.setText("🔄 Connecting...")
 
-        # Send connection request using ConnectionService
-        success = ConnectionService.send_connection_request(host_id)
+        from client.service.connection_service import send_connection_request
+
+        success = send_connection_request(host_id)
         if not success:
+            self.update_status.emit("Failed to send connection request", "error")
             self.reset_connect_button()
-            QMessageBox.critical(
-                self.main_window,
-                "Connection Error",
-                "Failed to send connection request",
-            )
+        else:
+            self.update_status.emit("Connection request sent", "info")
+            # Store password for later use
+            self.host_pass = host_pass
 
     def disconnect_from_partner(self):
         """Handle disconnect from partner"""
@@ -175,9 +240,8 @@ class MainWindowController(QObject):
 
     def refresh_password(self):
         """Generate new password"""
-        auth_service = get_auth_service()
-        if auth_service:
-            new_password = auth_service.generate_new_password()
+        if AuthService:
+            new_password = AuthService.generate_new_password()
 
             # Update UI
             if hasattr(self.main_window, "password_display"):
@@ -185,115 +249,6 @@ class MainWindowController(QObject):
 
             self.update_status.emit("Password refreshed", "info")
             logger.info("Password refreshed")
-
-    # ====== HOST ACTIONS ======
-
-    def accept_connection_request(self, controller_id: str, host_id: str):
-        """Accept incoming connection request"""
-        # Publish acceptance event
-
-    def reject_connection_request(self, controller_id: str, host_id: str):
-        """Reject incoming connection request"""
-        # Trigger rejection callback
-        callback_manager.trigger_callbacks(EventType.REJECT_CONNECTION.name, {})
-
-    # ====== CLIENT ACTIONS ======
-
-    # ====== EVENT HANDLERS ======
-
-    def _on_connection_established(self, data):
-        """Handle connection established"""
-        self.update_status.emit("Connected to server", "success")
-
-    def _on_connection_failed(self, data):
-        """Handle connection failed"""
-        self.update_status.emit("Failed to connect to server", "error")
-        self._show_connection_error()
-
-    def _on_connection_lost(self, data):
-        """Handle connection lost"""
-        self.update_status.emit("Connection lost", "warning")
-        self.reset_connect_button()
-
-    def _on_ui_update_status(self, data):
-        """Handle UI status update requests"""
-        if isinstance(data, dict):
-            message = data.get("message", "")
-            status_type = data.get("type", "info")
-            self.update_status.emit(message, status_type)
-
-    def _on_ui_show_notification_suggestion(self, data):
-        """Handle UI notification display requests"""
-        if isinstance(data, dict):
-            controller_id = str(data.get("controller_id", ""))
-            host_id = str(data.get("host_id", ""))
-            formatted_id = data.get("formatted_controller_id", controller_id)
-            self.show_connection_request.emit(controller_id, host_id, formatted_id)
-
-    def _on_ui_show_notification(self, data):
-        """Handle UI notification display requests"""
-        if isinstance(data, dict):
-            message = data.get("message", "Notification")
-            self.show_notification.emit(message, data.get("type", "info"))
-
-    def _on_request_host_password(self, data):
-        """Handle request for host password from ConnectionService"""
-        if isinstance(data, dict):
-            controller_id = data.get("controller_id")
-            host_id = data.get("host_id")
-
-            # Get password from UI input
-            if hasattr(self.main_window, "host_pass_input"):
-                password = self.main_window.host_pass_input.text().strip()
-
-                # Send password back to ConnectionService
-                callback_manager.trigger_callbacks(
-                    EventType.UI_SEND_HOST_PASSWORD.name,
-                    {
-                        "controller_id": controller_id,
-                        "host_id": host_id,
-                        "password": password,
-                    },
-                )
-            else:
-                logger.error("No host_pass_input found in main_window")
-
-    def _on_session_start(self, data):
-        """Handle session start"""
-        # Assume controller role if we have session data
-        self._create_remote_desktop_widget()
-        self.update_status.emit("✅ Connected - Remote desktop active", "success")
-
-    def _on_session_end(self, data):
-        """Handle session end"""
-        self._close_remote_desktop()
-        self.reset_connect_button()
-        self.update_status.emit("Session ended", "info")
-
-    def _on_ui_show_message(self, data):
-        """Handle UI message display requests"""
-        if isinstance(data, dict):
-            message_type = data.get("type")
-
-            if message_type == "connection_request":
-                controller_id = str(data.get("controller_id", ""))
-                host_id = str(data.get("host_id", ""))
-                formatted_id = data.get("formatted_controller_id", controller_id)
-                self.show_connection_request.emit(controller_id, host_id, formatted_id)
-
-    def _on_connected_to_host(self, data):
-        """Handle successful connection to host - show remote desktop"""
-        logger.info("Connected to host successfully, creating remote desktop widget")
-        # Use signal to create widget in main thread
-        self.create_remote_widget.emit()
-        self.update_status.emit("✅ Connected - Remote desktop active", "success")
-
-    def _on_disconnected_with_host(self, data):
-        """Handle disconnection from host - reset UI"""
-        logger.info("Disconnected from host, resetting UI")
-        self._close_remote_desktop()
-        self.reset_connect_button()
-        self.update_status.emit("Disconnected from host", "warning")
 
     # ====== UI UPDATE METHODS (THREAD-SAFE) ======
 
@@ -341,9 +296,15 @@ class MainWindowController(QObject):
         )
 
         if reply == QMessageBox.Yes:
-            ConnectionService._accept_connection_request(controller_id, host_id)
+            # Lazy import để tránh circular import
+            from client.service.connection_service import accept_connection_request
+
+            accept_connection_request(controller_id, host_id)
         else:
-            ConnectionService._reject_connection_request(controller_id, host_id)
+            # Lazy import để tránh circular import
+            from client.service.connection_service import reject_connection_request
+
+            reject_connection_request(controller_id, host_id)
 
     def _show_notification_dialog(self, message: str, notif_type: str):
         """Show notification message in main thread"""
@@ -386,16 +347,9 @@ class MainWindowController(QObject):
             # Import RemoteWidget
             from client.gui.remote_widget import RemoteWidget
 
-            # Get socket client from ConnectionService
-            socket_client = ConnectionService._socket_client
-
-            if not socket_client:
-                logger.error("No socket client available for remote widget")
-                self.reset_connect_button()
-                return
-
-            # Create remote widget as a standalone window (no parent)
-            self.main_window.remote_widget = RemoteWidget(socket_client, None)
+            # Since we now use SocketClient as singleton, RemoteWidget can access it directly
+            # No need to pass socket_client instance anymore
+            self.main_window.remote_widget = RemoteWidget(None, None)
 
             # Set window properties for resizable window
             self.main_window.remote_widget.setWindowTitle("Remote Desktop - PBL4")
