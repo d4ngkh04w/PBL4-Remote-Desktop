@@ -16,15 +16,7 @@ logger = logging.getLogger(__name__)
 class MainWindowController(QObject):
     """
     Main window controller focused on UI coordination.
-
-    Responsibilities:
-    - Handle UI events and user interactions
-    - Coordinate between UI and services (direct calls)
-    - Manage UI state changes
-    - Show dialogs and messages
-    """
-
-    # Class variable to store the current instance
+    """   
     _instance = None
 
     # Signals for UI updates (run in main thread)
@@ -44,8 +36,6 @@ class MainWindowController(QObject):
 
         # Set as singleton instance
         MainWindowController._instance = self
-
-        self.host_pass: str = ""  # Store host password for connection requests
 
         # Connect internal signals to UI methods
         self.update_status.connect(self._update_status_ui)
@@ -86,13 +76,6 @@ class MainWindowController(QObject):
             cls._instance._show_connection_error()
 
     @classmethod
-    def on_connection_disconnected(cls):
-        """Handle connection disconnected"""
-        if cls._instance:
-            cls._instance.update_status.emit("Disconnected from server", "warning")
-            cls._instance._show_connection_error()
-
-    @classmethod
     def on_connection_reconnecting(cls, data):
         """Handle reconnecting to server"""
         if cls._instance:
@@ -102,20 +85,14 @@ class MainWindowController(QObject):
             )
 
     @classmethod
-    def on_client_id_received(cls, data):
+    def on_client_id_received(cls):
         """Handle client ID received from server"""
         if not cls._instance:
-            return
-
-        if isinstance(data, dict):
-            client_id = data.get("client_id")
-            if client_id:
-                cls._instance.update_id_display.emit(format_numeric_id(client_id))
-                cls._instance.enable_tabs.emit(True)
-            else:
-                logger.error("No client_id found in data: %s", data)
-        else:
-            logger.error("Expected dict but got: %s", type(data))
+            return  
+        
+        cls._instance.update_id_display.emit(format_numeric_id(AuthService.get_client_id()))
+        cls._instance.enable_tabs.emit(True)
+           
 
     @classmethod
     def on_ui_update_status(cls, data):
@@ -127,20 +104,7 @@ class MainWindowController(QObject):
             message = data.get("message", "")
             status_type = data.get("type", "info")
             cls._instance.update_status.emit(message, status_type)
-
-    @classmethod
-    def on_ui_show_notification_suggestion(cls, data):
-        """Handle UI notification display requests"""
-        if not cls._instance:
-            return
-
-        if isinstance(data, dict):
-            controller_id = str(data.get("controller_id", ""))
-            host_id = str(data.get("host_id", ""))
-            formatted_id = data.get("formatted_controller_id", controller_id)
-            cls._instance.show_connection_request.emit(
-                controller_id, host_id, formatted_id
-            )
+   
 
     @classmethod
     def on_ui_show_notification(cls, data):
@@ -154,39 +118,13 @@ class MainWindowController(QObject):
 
     # ====== CONTROLLER ACTIONS ======
     @classmethod
-    def on_connected_to_host(cls, data):
+    def on_create_remote_widget(cls, data):
         """Handle successful connection to host - show remote desktop"""
         if cls._instance:
             logger.info(
                 "Connected to host successfully, creating remote desktop widget"
             )
             cls._instance.create_remote_widget.emit()
-            cls._instance.update_status.emit(
-                "✅ Connected - Remote desktop active", "success"
-            )
-
-    @classmethod
-    def on_disconnected_with_host(cls, data):
-        """Handle disconnection from host - reset UI"""
-        if cls._instance:
-            logger.info("Disconnected from host, resetting UI")
-            cls._instance._close_remote_desktop()
-            cls._instance.reset_connect_button()
-            cls._instance.update_status.emit("Disconnected from host", "warning")
-
-    @classmethod
-    def get_host_password(cls):
-        """Handle request for host password"""
-        if not cls._instance:
-            return ""
-
-        # Get password from UI input
-        if hasattr(cls._instance.main_window, "host_pass_input"):
-            password = cls._instance.main_window.host_pass_input.text().strip()
-            return password
-        else:
-            logger.error("No host_pass_input found in main_window")
-            return ""
 
     def connect_to_partner(self, host_id: str, host_pass: str):
         """Handle connect to partner request"""
@@ -198,6 +136,12 @@ class MainWindowController(QObject):
         if len(host_id) != 9 or not host_id.isdigit():
             QMessageBox.warning(
                 self.main_window, "Invalid ID", "Host ID must be exactly 9 digits"
+            )
+            return False
+        
+        if host_id == AuthService.get_client_id():
+            QMessageBox.warning(
+                self.main_window, "Invalid ID", "Host ID cannot be your own ID"
             )
             return False
 
@@ -212,31 +156,14 @@ class MainWindowController(QObject):
             self.main_window.connect_btn.setEnabled(False)
             self.main_window.connect_btn.setText("🔄 Connecting...")
 
-        from client.service.connection_service import send_connection_request
+        from client.service.controller_service import ControllerService
 
-        success = send_connection_request(host_id)
+        success = ControllerService.send_connection_request(host_id, host_pass)
         if not success:
             self.update_status.emit("Failed to send connection request", "error")
             self.reset_connect_button()
         else:
-            self.update_status.emit("Connection request sent", "info")
-            # Store password for later use
-            self.host_pass = host_pass
-
-    def disconnect_from_partner(self):
-        """Handle disconnect from partner"""
-        # Close remote desktop widget if open
-        if (
-            hasattr(self.main_window, "remote_widget")
-            and self.main_window.remote_widget
-        ):
-            self._close_remote_desktop()
-
-        # Reset UI
-        self.reset_connect_button()
-        self.update_status.emit("Disconnected from partner", "info")
-
-        logger.info("Disconnected from partner")
+            self.update_status.emit("Connection request sent", "info")    
 
     def refresh_password(self):
         """Generate new password"""
@@ -281,30 +208,7 @@ class MainWindowController(QObject):
                 """
             )
         else:
-            logger.error("main_window does not have id_display attribute")
-
-    def _show_connection_request_dialog(
-        self, controller_id: str, host_id: str, formatted_id: str
-    ):
-        """Show connection request dialog in main thread"""
-        reply = QMessageBox.question(
-            self.main_window,
-            "Connection Request",
-            f"Controller with ID {formatted_id} wants to connect. Accept?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-
-        if reply == QMessageBox.Yes:
-            # Lazy import để tránh circular import
-            from client.service.connection_service import accept_connection_request
-
-            accept_connection_request(controller_id, host_id)
-        else:
-            # Lazy import để tránh circular import
-            from client.service.connection_service import reject_connection_request
-
-            reject_connection_request(controller_id, host_id)
+            logger.error("main_window does not have id_display attribute")   
 
     def _show_notification_dialog(self, message: str, notif_type: str):
         """Show notification message in main thread"""
@@ -317,8 +221,7 @@ class MainWindowController(QObject):
 
     def _enable_tabs_ui(self, enable: bool):
         """Enable/disable tabs in main thread"""
-        if hasattr(self.main_window, "tabs"):
-            # Enable controller tab (usually index 1)
+        if hasattr(self.main_window, "tabs"):           
             self.main_window.tabs.setTabEnabled(1, enable)
 
     def _show_connection_error(self):

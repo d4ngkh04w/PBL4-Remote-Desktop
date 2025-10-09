@@ -4,17 +4,16 @@ import ssl
 import logging
 import threading
 from typing import Any
+from common.enums import Status
 from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
-    RequestPasswordPacket,
-    SendPasswordPacket,
+    SessionPacket,
 )
 from common.protocol import Protocol
 from client.controllers.main_window_controller import MainWindowController
-from client.service.auth_service import AuthService
-
+from client.service.session_service import SessionService
 logger = logging.getLogger(__name__)
 
 
@@ -65,17 +64,15 @@ class SocketClient:
             self._is_connecting = True
             self._manually_disconnected = False
 
-        # Thử kết nối
         if self._attempt_connect():
             return True
 
-        # Kết nối thất bại, bắt đầu reconnect nếu được phép
         if self.auto_reconnect:
             logger.info("Initial connection failed, starting reconnect process")
             self._start_reconnect_process()
-            return False  # Trả về False nhưng reconnect sẽ chạy background
+            return False
         else:
-            # Không auto reconnect, báo lỗi ngay
+
             with SocketClient._lock:
                 self._is_connecting = False
             MainWindowController.on_connection_failed()
@@ -94,14 +91,12 @@ class SocketClient:
         logger.info(f"Manually disconnecting from {self.host}:{self.port}")
         self._cleanup_connection()
 
-        MainWindowController.on_connection_disconnected()
-
     def _attempt_connect(self) -> bool:
         """
         Thực hiện kết nối socket
         """
         try:
-            # Tạo socket
+
             plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
             if self.use_ssl:
@@ -121,22 +116,18 @@ class SocketClient:
                 self.socket = plain_socket
                 logger.debug("SSL disabled: using plain TCP connection")
 
-            # Kết nối
             self.socket.settimeout(10)
             self.socket.connect((self.host, self.port))
             logger.info(f"Connected to server at {self.host}:{self.port}")
 
-            # Setup state cho kết nối thành công
             with SocketClient._lock:
                 self.running = True
                 self._is_connecting = False
                 self._reconnect_attempts = 0
                 self._shutdown_event.clear()
 
-            # Bắt đầu các thread
             self._start_threads()
 
-            # Thông báo kết nối thành công
             MainWindowController.on_connection_established()
 
             return True
@@ -214,10 +205,8 @@ class SocketClient:
             self.running = False
             self._is_connecting = True  # Bắt đầu reconnect
 
-        # Cleanup connection cũ
         self._cleanup_connection()
 
-        # Bắt đầu reconnect nếu được phép
         if self.auto_reconnect:
             logger.info("Starting reconnect after connection lost")
             self._start_reconnect_process()
@@ -317,33 +306,34 @@ class SocketClient:
             if not packet or not hasattr(packet, "packet_type"):
                 logger.error("Invalid packet received")
                 return
-
-            # Route packets based on type
-            if isinstance(packet, AssignIdPacket): 
-                AuthService.set_client_id(packet.client_id)
-                
-                # Update UI
-                MainWindowController.on_client_id_received(
-                    {"client_id": packet.client_id}
-                )
-                MainWindowController.on_ui_update_status(
-                    {
-                        "message": f"Ready - Your ID: {packet.client_id}",
-                        "type": "success",
-                    }
-                )
+            if isinstance(packet, AssignIdPacket):
+                from client.service.client_service import ClientService
+                ClientService._handle_assign_id_packet(packet)
             elif isinstance(packet, ConnectionRequestPacket):
-                from client.service.connection_service import ConnectionServiceHandlers
-                ConnectionServiceHandlers.handle_connection_request_packet(packet)
+                from client.service.host_service import HostService
+                HostService._handle_connection_request_packet(packet)
             elif isinstance(packet, ConnectionResponsePacket):
-                from client.service.connection_service import ConnectionServiceHandlers
-                ConnectionServiceHandlers.handle_connection_response_packet(packet)
-            elif isinstance(packet, RequestPasswordPacket):
-                from client.service.connection_service import ConnectionServiceHandlers
-                ConnectionServiceHandlers.handle_request_password_packet(packet)
-            elif isinstance(packet, SendPasswordPacket):
-                from client.service.connection_service import ConnectionServiceHandlers
-                ConnectionServiceHandlers.handle_send_password_packet(packet)
+                if (packet.connection_status == Status.SERVER_FULL or 
+                    packet.connection_status == Status.RECEIVER_NOT_FOUND):
+                    from client.service.client_service import ClientService
+                    ClientService._handle_connection_response_packet(packet)
+                else:
+                    from client.service.controller_service import ControllerService
+                    ControllerService._handle_connection_response_packet(packet)
+            elif isinstance(packet, SessionPacket):
+                if packet.status == Status.SESSION_STARTED:
+                    if packet.role:
+                        SessionService.add_session(packet.session_id, packet.role)
+                        if packet.role == "controller":
+                            from client.service.controller_service import ControllerService
+                            ControllerService._handle_session_packet(packet)
+                        elif packet.role == "host":
+                            from client.service.host_service import HostService
+                            HostService._handle_session_packet(packet)
+                        else:
+                            logger.error(f"Unknown role in SessionPacket: {packet.role}")
+                    else:
+                        logger.error("SessionPacket missing role for SESSION_STARTED")
             else:
                 logger.warning(f"Unhandled packet type: {type(packet)}")
 
@@ -359,7 +349,7 @@ class SocketClient:
                 logger.error(f"Error closing socket - {e}")
             self.socket = None
         try:
-            self._send_queue.put(None, timeout=0.1)  # Shutdown signal
+            self._send_queue.put(None, timeout=0.1)  
         except:
             pass
 
@@ -376,10 +366,3 @@ class SocketClient:
                 self._send_queue.get_nowait()
             except Empty:
                 break
-
-    def __del__(self):
-        """Cleanup khi object bị destroy"""
-        try:
-            self.disconnect()
-        except:
-            pass

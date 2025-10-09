@@ -1,7 +1,3 @@
-"""
-Main window for client-new architecture.
-Updated to use EventBus and new controller/service architecture.
-"""
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -25,12 +21,6 @@ from client.service.auth_service import AuthService
 class MainWindow(QMainWindow):
     """
     Main window for the client-new application.
-
-    Responsibilities:
-    - Create and layout UI components
-    - Handle basic UI events
-    - Delegate business logic to MainWindowController
-    - Display information from services via controller
     """
 
     def __init__(self):
@@ -62,8 +52,7 @@ class MainWindow(QMainWindow):
 
         # Initialize password display
         if self.password_display:
-            self.password_display.setText(AuthService.get_current_password())
-       
+            self.password_display.setText(AuthService.get_password())
 
     def init_ui(self):
         """Khởi tạo giao diện người dùng"""
@@ -354,25 +343,18 @@ class MainWindow(QMainWindow):
 
     def copy_id_to_clipboard(self):
         """Copy ID to clipboard"""
-        if (
-            self.id_display
-            and self.id_display.text()
-            and self.id_display.text() != "Connecting..."
-            and self.id_display.text() != "Connection Failed"
-        ):
+        if AuthService:
+            client_id = AuthService.get_client_id()
             clipboard = QApplication.clipboard()
-            # Remove formatting from ID before copying
-            from common.utils import unformat_numeric_id
-
             if clipboard is not None:
-                clipboard.setText(unformat_numeric_id(self.id_display.text()))
+                clipboard.setText(client_id)
                 if self.status_bar is not None:
                     self.status_bar.showMessage("ID copied to clipboard!", 2000)
 
     def copy_password(self):
         """Copy password to clipboard"""
         if AuthService:
-            password = AuthService.get_current_password()
+            password = AuthService.get_password()
             clipboard = QApplication.clipboard()
             if clipboard is not None:
                 clipboard.setText(password)
