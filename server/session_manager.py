@@ -5,8 +5,8 @@ import uuid
 from typing import Union, Optional
 
 from server.client_manager import ClientManager
-from common.packets import ConnectionResponsePacket
-from common.enums import ConnectionStatus
+from common.packets import SessionPacket
+from common.enums import Status
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +47,16 @@ class SessionManager:
                 controller_id = str(cls.__active_session[sid]["controller_id"])
                 host_id = str(cls.__active_session[sid]["host_id"])
 
-                response = ConnectionResponsePacket(
-                    connection_status=ConnectionStatus.SESSION_TIMEOUT,
-                    message="Session timed out due to inactivity",
-                    host_id=host_id,
-                    controller_id=controller_id,
+                response = SessionPacket(
+                    status=Status.SESSION_TIMEOUT,
+                    session_id=sid,
                 )
-                ClientManager.get_client_queue(controller_id).put(response)
-                ClientManager.get_client_queue(host_id).put(response)
+                controller_queue = ClientManager.get_client_queue(controller_id)
+                host_queue = ClientManager.get_client_queue(host_id)
+                if controller_queue:
+                    controller_queue.put(response)
+                if host_queue:
+                    host_queue.put(response)
                 cls.end_session(sid)
 
     @classmethod
@@ -79,15 +81,7 @@ class SessionManager:
         """Tạo session mới"""
         with cls.__lock:
             try:
-                if not ClientManager.is_client_online(controller_id):
-                    raise ValueError(f"Controller {controller_id} is not online")
-                if not ClientManager.is_client_online(host_id):
-                    raise ValueError(f"Host {host_id} is not online")
-
                 session_id = str(uuid.uuid4())
-
-                ClientManager.update_client_status(controller_id, "IN_SESSION")
-                ClientManager.update_client_status(host_id, "IN_SESSION")
 
                 cls.__active_session[session_id] = {
                     "controller_id": controller_id,
@@ -112,15 +106,6 @@ class SessionManager:
         with cls.__lock:
             try:
                 if session_id in cls.__active_session:
-                    session_info = cls.__active_session[session_id]
-
-                    ClientManager.update_client_status(
-                        str(session_info["controller_id"]), "ONLINE"
-                    )
-                    ClientManager.update_client_status(
-                        str(session_info["host_id"]), "ONLINE"
-                    )
-
                     del cls.__active_session[session_id]
 
                     logger.info(f"Session {session_id} ended")
@@ -130,7 +115,13 @@ class SessionManager:
                 return False
 
     @classmethod
-    def get_client_sessions(
+    def get_session(cls, session_id: str) -> Optional[dict[str, Union[str, float]]]:
+        """Lấy thông tin session"""
+        with cls.__lock:
+            return cls.__active_session.get(session_id)
+
+    @classmethod
+    def get_client_session(
         cls,
         client_id: str,
     ) -> tuple[Optional[str], Optional[dict[str, Union[str, float]]]]:
@@ -147,37 +138,25 @@ class SessionManager:
             )
 
     @classmethod
-    def is_client_in_session(cls, client_id: str) -> bool:
-        """Kiểm tra xem client có đang trong session không"""
+    def get_all_sessions(
+        cls, client_id: str
+    ) -> dict[str, dict[str, Union[str, float]]]:
+        """Lấy tất cả session của một client"""
         with cls.__lock:
-            for session in cls.__active_session.values():
-                if (
-                    session["controller_id"] == client_id
-                    or session["host_id"] == client_id
-                ):
-                    return True
-            return False
+            return {
+                session_id: info
+                for session_id, info in cls.__active_session.items()
+                if info["controller_id"] == client_id or info["host_id"] == client_id
+            }
 
     @classmethod
-    def get_client_role_in_session(
-        cls, client_id: str, session_id: str | None = None
-    ) -> Optional[str]:
-        """Lấy vai trò của client trong session hiện tại"""
+    def is_client_in_session(cls, client_id: str, session_id: str) -> bool:
+        """Kiểm tra xem client có đang trong session không"""
         with cls.__lock:
-            if session_id:
-                session = cls.__active_session.get(session_id)
-                if not session:
-                    return None
-                if session["controller_id"] == client_id:
-                    return "CONTROLLER"
-                elif session["host_id"] == client_id:
-                    return "HOST"
-                else:
-                    return None
-            else:
-                for session in cls.__active_session.values():
-                    if session["controller_id"] == client_id:
-                        return "CONTROLLER"
-                    elif session["host_id"] == client_id:
-                        return "HOST"
-                return None
+            if session_id in cls.__active_session:
+                session_info = cls.__active_session[session_id]
+                return (
+                    session_info["controller_id"] == client_id
+                    or session_info["host_id"] == client_id
+                )
+            return False

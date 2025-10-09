@@ -9,7 +9,7 @@ from common.enums import (
     KeyBoardEventType,
     MouseEventType,
     MouseButton,
-    ConnectionStatus,
+    Status,
 )
 
 
@@ -21,7 +21,7 @@ class SafeDeserializer:
     ALLOWED_CLASSES[KeyBoardEventType.__name__] = KeyBoardEventType
     ALLOWED_CLASSES[MouseEventType.__name__] = MouseEventType
     ALLOWED_CLASSES[MouseButton.__name__] = MouseButton
-    ALLOWED_CLASSES[ConnectionStatus.__name__] = ConnectionStatus
+    ALLOWED_CLASSES[Status.__name__] = Status
 
     class SafeUnpickler(pickle.Unpickler):
         def __init__(self, file, allowed_classes: dict[str, Type]):

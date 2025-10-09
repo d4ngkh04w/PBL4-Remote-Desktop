@@ -13,7 +13,6 @@ ClientInfo = TypedDict(
         "socket": Union[socket.socket, ssl.SSLSocket],
         "ip": str,
         "id": str,
-        "status": str,
         "queue": Queue,  # Hàng đợi để gửi gói tin
     },
 )
@@ -35,7 +34,6 @@ class ClientManager:
                 socket=client_socket,
                 ip=client_ip,
                 id=client_id,
-                status="ONLINE",
                 queue=Queue(maxsize=2048),
             )
 
@@ -53,12 +51,6 @@ class ClientManager:
                     client_info["socket"].close()
                 except Exception:
                     logger.error(f"Error closing socket for client {client_id}")
-
-    @classmethod
-    def update_client_status(cls, client_id: str, status: str) -> None:
-        with cls.__lock:
-            if client_id in cls.__active_clients:
-                cls.__active_clients[client_id]["status"] = status
 
     @classmethod
     def get_client_info(cls, client: str | socket.socket | ssl.SSLSocket):
@@ -88,11 +80,6 @@ class ClientManager:
         with cls.__lock:
             client_info = cls.__active_clients.get(client_id)
             return client_info["queue"] if client_info else None
-
-    @classmethod
-    def is_client_online(cls, client_id: str) -> bool:
-        with cls.__lock:
-            return cls.__active_clients.get(client_id, {}).get("status") == "ONLINE"
 
     @classmethod
     def is_client_exist(cls, client_id: str) -> bool:

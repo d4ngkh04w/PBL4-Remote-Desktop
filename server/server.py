@@ -5,7 +5,7 @@ import threading
 import logging
 
 from common.packets import AssignIdPacket, ConnectionResponsePacket
-from common.enums import ConnectionStatus
+from common.enums import Status
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
 from server.client_manager import ClientManager
@@ -60,8 +60,8 @@ class Server:
                             f"Max clients reached. Rejecting connection from {addr}"
                         )
                         rejection_packet = ConnectionResponsePacket(
-                            connection_status=ConnectionStatus.SERVER_FULL,
-                            message="Server is currently full. Please try again later",
+                            connection_status=Status.SERVER_FULL,
+                            message="Server is full, please try again later",
                         )
                         Protocol.send_packet(client_socket, rejection_packet)
                         client_socket.close()
@@ -185,9 +185,11 @@ class Server:
             pass
         finally:
             client_socket.close()
-            session_id, _ = SessionManager.get_client_sessions(client_id)
-            if session_id:
-                SessionManager.end_session(session_id)
+            session = SessionManager.get_all_sessions(client_id)
+            if session:
+                for sess_id in session.keys():
+                    SessionManager.end_session(sess_id)
+
             ClientManager.remove_client(client_id)
             client_semaphore.release()
             logger.info(f"Client {client_id} disconnected from {client_addr}")

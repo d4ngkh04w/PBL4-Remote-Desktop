@@ -2,6 +2,7 @@ import secrets
 from PIL import Image
 import psutil
 import sys
+import socket
 
 import mss
 from pynput.mouse import Controller
@@ -80,6 +81,11 @@ def capture_screen() -> Image.Image:
         )
         sct.close()
         return img_pil
+
+
+def get_hostname() -> str:
+    """Lấy tên máy tính"""
+    return socket.gethostname()
 
 
 def get_resource_usage():
