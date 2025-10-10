@@ -5,6 +5,7 @@ import sys
 import socket
 
 import mss
+from mss.base import MSSBase
 from pynput.mouse import Controller
 
 if sys.platform == "win32":
@@ -50,37 +51,80 @@ def unformat_numeric_id(formatted_id: str) -> str:
     return formatted_id.replace(" ", "")
 
 
-def get_cursor_pos():
-    """Lấy vị trí chuột hiện tại (x, y)"""
-    mouse = Controller()
-    return int(mouse.position[0]), int(mouse.position[1])
+# def get_cursor_pos():
+#     """Lấy vị trí chuột hiện tại (x, y)"""
+#     mouse = Controller()
+#     return int(mouse.position[0]), int(mouse.position[1])
 
 
-def capture_screen() -> Image.Image:
-    """Capture screen và trả về đối tượng PIL Image"""
-    img_pil = Image.new("RGB", (1, 1), (0, 0, 0))
-    if sys.platform == "linux":
-        sct = mss.mss(with_cursor=True)
-    elif sys.platform == "win32":
-        sct = mss.mss()
+def capture_frame(
+    sct_instance: MSSBase,
+    monitor: dict,
+    mouse_controller: Controller,
+    draw_cursor: bool = True,
+) -> Image.Image | None:
+    try:
+        # Chụp màn hình
+        img_bgra = sct_instance.grab(monitor)
 
-    monitor = sct.monitors[1]
-    img = sct.grab(monitor)
-    img_pil = Image.frombytes("RGB", img.size, img.rgb)
+        # BGRX loại bỏ kênh Alpha không cần thiết
+        img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
 
-    if sys.platform == "linux":
-        sct.close()
-        return img_pil
-    elif sys.platform == "win32":
-        cursor_x, cursor_y = get_cursor_pos()
-        draw = ImageDraw.Draw(img_pil)
-        draw.ellipse(
-            (cursor_x - 5, cursor_y - 5, cursor_x + 5, cursor_y + 5),
-            fill=(255, 0, 0),
-            outline=(0, 0, 0),
-        )
-        sct.close()
-        return img_pil
+        if draw_cursor:
+            # Lấy vị trí chuột toàn cục
+            mouse_x, mouse_y = mouse_controller.position
+
+            # Tính toán vị trí tương đối của chuột trên màn hình đang được chụp
+            monitor_x, monitor_y = monitor["left"], monitor["top"]
+            relative_x = mouse_x - monitor_x
+            relative_y = mouse_y - monitor_y
+
+            # Chỉ vẽ nếu con trỏ nằm trong phạm vi của màn hình này
+            if (
+                0 <= relative_x < monitor["width"]
+                and 0 <= relative_y < monitor["height"]
+            ):
+                draw = ImageDraw.Draw(img_pil)
+                radius = 8
+                # Tọa độ để vẽ hình tròn con trỏ
+                ellipse_bbox = (
+                    relative_x - radius,
+                    relative_y - radius,
+                    relative_x + radius,
+                    relative_y + radius,
+                )
+                draw.ellipse(ellipse_bbox, fill=(255, 0, 0), outline=(0, 0, 0))
+
+            return img_pil
+    except mss.ScreenShotError as e:
+        return None
+
+
+# def capture_screen() -> Image.Image:
+#     """Capture screen và trả về đối tượng PIL Image"""
+#     img_pil = Image.new("RGB", (1, 1), (0, 0, 0))
+#     if sys.platform == "linux":
+#         sct = mss.mss(with_cursor=True)
+#     elif sys.platform == "win32":
+#         sct = mss.mss()
+
+#     monitor = sct.monitors[1]
+#     img = sct.grab(monitor)
+#     img_pil = Image.frombytes("RGB", img.size, img.rgb)
+
+#     if sys.platform == "linux":
+#         sct.close()
+#         return img_pil
+#     elif sys.platform == "win32":
+#         cursor_x, cursor_y = get_cursor_pos()
+#         draw = ImageDraw.Draw(img_pil)
+#         draw.ellipse(
+#             (cursor_x - 5, cursor_y - 5, cursor_x + 5, cursor_y + 5),
+#             fill=(255, 0, 0),
+#             outline=(0, 0, 0),
+#         )
+#         sct.close()
+#         return img_pil
 
 
 def get_hostname() -> str:

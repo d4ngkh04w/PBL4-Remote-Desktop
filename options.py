@@ -49,9 +49,9 @@ def get_parser():
     general.add_argument(
         "--fps",
         type=int,
-        default=20,
+        default=25,
         metavar="FPS",
-        help="Screen sharing frame rate (client only, default: 20 FPS)",
+        help="Screen sharing frame rate (client only, default: 25 FPS)",
     )
     general.add_argument(
         "-mc",

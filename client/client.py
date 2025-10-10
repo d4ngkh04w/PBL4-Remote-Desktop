@@ -41,9 +41,9 @@ class RemoteDesktopClient:
 
     def initialize_services(self):
         """Khởi tạo các dịch vụ (chưa kết nối)"""
-        try:            
+        try:
             self.auth_service = AuthService()
-            
+
             self.socket_client = SocketClient(
                 self.server_host, self.server_port, self.use_ssl, self.cert_file
             )
@@ -59,9 +59,11 @@ class RemoteDesktopClient:
             if self.socket_client is None:
                 logger.error("Socket client is not initialized")
                 return False
-            
+
             if not self.socket_client.connect():
-                logger.warning("Initial connection failed, but auto-reconnect is enabled")
+                logger.warning(
+                    "Initial connection failed, but auto-reconnect is enabled"
+                )
                 # Không return False ở đây vì auto-reconnect sẽ chạy background
             return True
         except Exception as e:

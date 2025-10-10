@@ -7,7 +7,7 @@ class Config:
     debug: bool = False
     ip: str = "127.0.0.1"
     port: int = 5000
-    fps: int = 20
+    fps: int = 25
     max_clients: int = 10
     session_timeout: int = 3600
     ssl: bool = False

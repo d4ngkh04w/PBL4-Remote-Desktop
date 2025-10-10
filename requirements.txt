@@ -7,3 +7,4 @@ psutil==7.0.0
 PyQt5==5.15.11
 numpy==2.2.6
 colorama==0.4.6
+av==15.1.0
