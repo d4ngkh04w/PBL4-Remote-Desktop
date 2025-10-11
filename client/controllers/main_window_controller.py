@@ -1,12 +1,13 @@
 import logging
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
-
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from client.service.auth_service import AuthService
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from client.managers.client_manager import ClientManager
+
+# from client.managers.connection_manager import ConnectionManager
 from common.utils import format_numeric_id
 
 
@@ -15,24 +16,28 @@ logger = logging.getLogger(__name__)
 
 class MainWindowController(QObject):
     """
-    Main window controller focused on UI coordination.
-    """   
+    Điều khiển chính cho cửa sổ chính.
+    """
+
     _instance = None
 
     # Signals for UI updates (run in main thread)
-    update_status = pyqtSignal(str, str)  # message, type
+    update_status = pyqtSignal(str)  # message
     update_id_display = pyqtSignal(str)  # client_id
-    show_connection_request = pyqtSignal(
-        str, str, str
-    )  # controller_id, host_id, formatted_id
+    update_password_display = pyqtSignal(str)  # new_password
     enable_tabs = pyqtSignal(bool)  # enable controller tab
     show_notification = pyqtSignal(str, str)  # message, type
-    create_remote_widget = pyqtSignal()  # signal to create remote widget
+    create_remote_widget = pyqtSignal(
+        str
+    )  # session_id - signal to create remote widget
 
-    def __init__(self, main_window):
+    def __init__(self, main_window, config):
         super().__init__()
         self.main_window = main_window
         self._running = False
+
+        self.config = config
+        self.connection_manager = None
 
         # Set as singleton instance
         MainWindowController._instance = self
@@ -40,26 +45,43 @@ class MainWindowController(QObject):
         # Connect internal signals to UI methods
         self.update_status.connect(self._update_status_ui)
         self.update_id_display.connect(self._update_id_display_ui)
-        self.show_connection_request.connect(self._show_connection_request_dialog)
         self.enable_tabs.connect(self._enable_tabs_ui)
         self.show_notification.connect(self._show_notification_dialog)
         self.create_remote_widget.connect(self._create_remote_desktop_widget)
+        self.update_password_display.connect(self._update_password_display_ui)
 
     def start(self):
-        """Start the controller"""
+        """Bắt đầu điều khiển"""
         if self._running:
             return
 
         self._running = True
         logger.info("MainWindowController started")
 
+        self.__initialize_network_connection()
+
     def stop(self):
-        """Stop the controller"""
+        """Dừng điều khiển"""
         if not self._running:
             return
 
         self._running = False
         logger.info("MainWindowController stopped")
+
+    def __initialize_network_connection(self):
+        """
+        Khởi tạo và kết nối ConnectionManager.
+        """
+        from client.managers.connection_manager import ConnectionManager
+
+        self.connection_manager = ConnectionManager(
+            self.config.get("server_host", "localhost"),
+            self.config.get("server_port", 12345),
+            self.config.get("use_ssl", False),
+            self.config.get("cert_file", None),
+        )
+        self.connection_manager.connect()
+        logger.debug("ConnectionManager initialized and connecting")
 
     # ====== METHODS FOR SIGNALS ======
     @classmethod
@@ -88,37 +110,32 @@ class MainWindowController(QObject):
     def on_client_id_received(cls):
         """Handle client ID received from server"""
         if not cls._instance:
-            return  
-        
-        cls._instance.update_id_display.emit(format_numeric_id(AuthService.get_client_id()))
+            return
+
+        cls._instance.update_id_display.emit(
+            format_numeric_id(ClientManager.get_client_id())
+        )
         cls._instance.enable_tabs.emit(True)
-           
 
     @classmethod
-    def on_ui_update_status(cls, data):
+    def on_ui_update_status(cls, message: str):
         """Handle UI status update requests"""
         if not cls._instance:
             return
 
-        if isinstance(data, dict):
-            message = data.get("message", "")
-            status_type = data.get("type", "info")
-            cls._instance.update_status.emit(message, status_type)
-   
+        cls._instance.update_status.emit(message)
 
     @classmethod
-    def on_ui_show_notification(cls, data):
+    def on_ui_show_notification(cls, message: str, notif_type: str = "info"):
         """Handle UI notification display requests"""
         if not cls._instance:
             return
 
-        if isinstance(data, dict):
-            message = data.get("message", "Notification")
-            cls._instance.show_notification.emit(message, data.get("type", "info"))
+        cls._instance.show_notification.emit(message, notif_type)
 
     # ====== CONTROLLER ACTIONS ======
     @classmethod
-    def on_create_remote_widget(cls, data):
+    def on_create_remote_widget(cls, session_id: str):
         """Handle successful connection to host - show remote desktop"""
         if cls._instance:
             logger.info(
@@ -138,8 +155,8 @@ class MainWindowController(QObject):
                 self.main_window, "Invalid ID", "Host ID must be exactly 9 digits"
             )
             return False
-        
-        if host_id == AuthService.get_client_id():
+
+        if host_id == ClientManager.get_client_id():
             QMessageBox.warning(
                 self.main_window, "Invalid ID", "Host ID cannot be your own ID"
             )
@@ -156,30 +173,15 @@ class MainWindowController(QObject):
             self.main_window.connect_btn.setEnabled(False)
             self.main_window.connect_btn.setText("🔄 Connecting...")
 
-        from client.service.controller_service import ControllerService
+        from client.handlers.controller_handler import ControllerHandler
 
-        success = ControllerService.send_connection_request(host_id, host_pass)
-        if not success:
-            self.update_status.emit("Failed to send connection request", "error")
-            self.reset_connect_button()
-        else:
-            self.update_status.emit("Connection request sent", "info")    
+        ControllerHandler.send_connection_request(host_id, host_pass)
 
-    def refresh_password(self):
-        """Generate new password"""
-        if AuthService:
-            new_password = AuthService.generate_new_password()
-
-            # Update UI
-            if hasattr(self.main_window, "password_display"):
-                self.main_window.password_display.setText(new_password)
-
-            self.update_status.emit("Password refreshed", "info")
-            logger.info("Password refreshed")
+        self.update_status.emit("Connection request sent", "info")
 
     # ====== UI UPDATE METHODS (THREAD-SAFE) ======
 
-    def _update_status_ui(self, message: str, status_type: str):
+    def _update_status_ui(self, message: str):
         """Update status bar in main thread"""
         if hasattr(self.main_window, "status_bar"):
             self.main_window.status_bar.showMessage(message)
@@ -208,7 +210,7 @@ class MainWindowController(QObject):
                 """
             )
         else:
-            logger.error("main_window does not have id_display attribute")   
+            logger.error("main_window does not have id_display attribute")
 
     def _show_notification_dialog(self, message: str, notif_type: str):
         """Show notification message in main thread"""
@@ -221,7 +223,7 @@ class MainWindowController(QObject):
 
     def _enable_tabs_ui(self, enable: bool):
         """Enable/disable tabs in main thread"""
-        if hasattr(self.main_window, "tabs"):           
+        if hasattr(self.main_window, "tabs"):
             self.main_window.tabs.setTabEnabled(1, enable)
 
     def _show_connection_error(self):
@@ -286,6 +288,12 @@ class MainWindowController(QObject):
             logger.error(f"Error creating remote widget: {e}")
             self.reset_connect_button()
 
+    def _update_password_display_ui(self):
+        """Update password display in main thread"""
+        if hasattr(self.main_window, "password_display"):
+            ClientManager.generate_new_password()
+            self.main_window.password_display.setText(ClientManager.get_password())
+
     def _close_remote_desktop(self):
         """Close remote desktop widget"""
         if (
@@ -339,6 +347,9 @@ class MainWindowController(QObject):
                 and self.main_window.remote_widget
             ):
                 self._close_remote_desktop()
+
+            if self.connection_manager:
+                self.connection_manager.disconnect
 
             logger.info("MainWindowController cleanup completed")
 

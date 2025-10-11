@@ -8,7 +8,6 @@ import mss
 from common.packets import VideoStreamPacket
 from common.utils import capture_frame
 from common.h264encoder import H264Encoder
-from client.network.socket_client import SocketClient
 
 logger = logging.getLogger(__name__)
 

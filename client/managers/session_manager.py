@@ -1,4 +1,4 @@
-class SessionService:
+class SessionManager:
     """Quản lý các phiên làm việc của client (controller / host)."""
     
     _sessions: dict[str, str] = {}  # session_id: role
