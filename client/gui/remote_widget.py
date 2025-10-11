@@ -13,8 +13,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter
 from PyQt5.QtCore import Qt, pyqtSignal
-
-from client.network.socket_client import SocketClient
 from common.packets import ImagePacket, FrameUpdatePacket
 
 

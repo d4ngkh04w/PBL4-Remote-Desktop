@@ -15,16 +15,16 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 from client.controllers.main_window_controller import MainWindowController
-from client.service.auth_service import AuthService
-
 
 class MainWindow(QMainWindow):
     """
     Main window for the client-new application.
     """
 
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+
+        self.config = config
 
         # UI components that need to be accessed later
         self.id_display = None
@@ -41,18 +41,16 @@ class MainWindow(QMainWindow):
         # Track cleanup state
         self._cleanup_done = False
 
-        # Initialize controller for business logic
-        self.controller = MainWindowController(self)
-
         # Setup UI
         self.init_ui()
+
+        # Initialize controller for business logic
+        self.controller = MainWindowController(self, self.config)
 
         # Start controller after UI is ready
         self.controller.start()
 
-        # Initialize password display
-        if self.password_display:
-            self.password_display.setText(AuthService.get_password())
+        self.controller.update_password_display.emit()
 
     def init_ui(self):
         """Khởi tạo giao diện người dùng"""
@@ -217,7 +215,7 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        self.refresh_btn.clicked.connect(self.controller.refresh_password)
+        self.refresh_btn.clicked.connect(self.controller.update_password_display)
 
         copy_id_btn = QPushButton("📋 Copy ID")
         copy_id_btn.setMinimumHeight(40)
@@ -341,25 +339,25 @@ class MainWindow(QMainWindow):
             if self.status_bar is not None:
                 self.status_bar.showMessage("Input fields are not ready.", 5000)
 
-    def copy_id_to_clipboard(self):
-        """Copy ID to clipboard"""
-        if AuthService:
-            client_id = AuthService.get_client_id()
-            clipboard = QApplication.clipboard()
-            if clipboard is not None:
-                clipboard.setText(client_id)
-                if self.status_bar is not None:
-                    self.status_bar.showMessage("ID copied to clipboard!", 2000)
+    # def copy_id_to_clipboard(self):
+    #     """Copy ID to clipboard"""
+    #     if:
+    #         client_id = AuthService.get_client_id()
+    #         clipboard = QApplication.clipboard()
+    #         if clipboard is not None:
+    #             clipboard.setText(client_id)
+    #             if self.status_bar is not None:
+    #                 self.status_bar.showMessage("ID copied to clipboard!", 2000)
 
-    def copy_password(self):
-        """Copy password to clipboard"""
-        if AuthService:
-            password = AuthService.get_password()
-            clipboard = QApplication.clipboard()
-            if clipboard is not None:
-                clipboard.setText(password)
-                if self.status_bar is not None:
-                    self.status_bar.showMessage("Password copied to clipboard!", 2000)
+    # def copy_password(self):
+    #     """Copy password to clipboard"""
+    #     if AuthService:
+    #         password = AuthService.get_password()
+    #         clipboard = QApplication.clipboard()
+    #         if clipboard is not None:
+    #             clipboard.setText(password)
+    #             if self.status_bar is not None:
+    #                 self.status_bar.showMessage("Password copied to clipboard!", 2000)
 
     def closeEvent(self, event):
         """Handle window close event"""
@@ -378,9 +376,6 @@ class MainWindow(QMainWindow):
             if self.controller:
                 self.controller.cleanup()
 
-            if self.remote_widget:
-                if hasattr(self.remote_widget, "cleanup"):
-                    self.remote_widget.cleanup()
-
+           
         except Exception as e:
             print(f"Error during cleanup: {e}")

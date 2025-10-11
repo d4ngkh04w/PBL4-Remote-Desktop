@@ -3,12 +3,14 @@ from common.password_manager import PasswordManager
 
 logger = logging.getLogger(__name__)
 
-class AuthService:
-    """Pure static service quản lý xác thực và mật khẩu"""
-    
+
+class ClientManager:
+    """
+    Quản lý thông tin client
+    """
+
     _my_password: str = ""
     _my_id: str = ""
-    
 
     @classmethod
     def generate_new_password(cls) -> str:
@@ -31,13 +33,8 @@ class AuthService:
     def get_client_id(cls) -> str:
         """Lấy client ID đã được gán"""
         return cls._my_id
-    
+
     @classmethod
     def get_password(cls) -> str:
         """Lấy mật khẩu hiện tại"""
-        return cls._my_password    
- 
-
-# Initialize password when module is loaded
-AuthService.generate_new_password()
-
+        return cls._my_password
