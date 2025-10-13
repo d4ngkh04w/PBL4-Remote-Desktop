@@ -1,6 +1,4 @@
 import lz4.frame as lz4
-
-from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget,
     QLabel,
@@ -13,20 +11,23 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter
 from PyQt5.QtCore import Qt, pyqtSignal
-from common.packets import ImagePacket, FrameUpdatePacket
+from client.controllers.remote_widget_controller import RemoteWidgetController
 
 
 class RemoteWidget(QWidget):
-    disconnect_requested = pyqtSignal()
+    disconnect_requested = pyqtSignal(str)  # Emit session_id when disconnect
 
-    def __init__(self, network_client: Optional[SocketClient] = None, parent=None):
-        super().__init__(parent)
-        # With SocketClient as singleton, we don't need to store instance
-        # Keep for backward compatibility but won't use it
-        self.network_client = network_client
+    def __init__(self, session_id: str):
+        super().__init__()
+        self.session_id = session_id
         self.original_width = 0
         self.original_height = 0
         self.full_screen_pixmap = None
+        self.controller = RemoteWidgetController(self, self.session_id)
+
+        # Track cleanup state
+        self._cleanup_done = False
+
         self.init_ui()
 
     def init_ui(self):
@@ -36,6 +37,9 @@ class RemoteWidget(QWidget):
         self.create_control_toolbar(main_layout)
         self.create_screen_area(main_layout)
         self.create_status_area(main_layout)
+
+        # Set window title with session ID
+        self.setWindowTitle(f"Remote Desktop - Session: {self.session_id}")
 
     def create_control_toolbar(self, parent_layout):
         toolbar_group = QGroupBox("Remote Control")
@@ -58,7 +62,9 @@ class RemoteWidget(QWidget):
         toolbar_layout.addWidget(self.fullscreen_btn)
 
         self.disconnect_btn = QPushButton("❌ Disconnect")
-        self.disconnect_btn.clicked.connect(self.disconnect_requested.emit)
+        self.disconnect_btn.clicked.connect(
+            lambda: self.disconnect_requested.emit(self.session_id)
+        )
         toolbar_layout.addWidget(self.disconnect_btn)
 
         parent_layout.addWidget(toolbar_group)
@@ -87,46 +93,34 @@ class RemoteWidget(QWidget):
         status_layout.addStretch()
         parent_layout.addLayout(status_layout)
 
-    def handle_full_image_packet(self, packet: ImagePacket):
+    def handle_video_stream_packet(self, packet: VideoStreamPacket):
+        """Handle video stream packet and display the image"""
         try:
-            decompressed_data = lz4.decompress(packet.image_data)
+            # Assuming video_data contains compressed image data
+            decompressed_data = lz4.decompress(packet.video_data)
             image = QImage.fromData(decompressed_data)
+
             if not image.isNull():
                 self.full_screen_pixmap = QPixmap.fromImage(image)
-                self.original_width = (
-                    packet.original_width
-                    if packet.original_width > 0
-                    else image.width()
-                )
-                self.original_height = (
-                    packet.original_height
-                    if packet.original_height > 0
-                    else image.height()
-                )
+                self.original_width = image.width()
+                self.original_height = image.height()
                 self.update_display()
                 self.info_label.setText(
                     f"Resolution: {self.original_width}x{self.original_height}"
                 )
                 self.status_label.setText("🔗 Connected - Receiving")
         except Exception as e:
-            self.show_error(f"Error handling image: {str(e)}")
+            self.show_error(f"Error handling video stream: {str(e)}")
 
-    def handle_frame_update_packet(self, packet: FrameUpdatePacket):
-        if self.full_screen_pixmap is None:
-            return
-        try:
-            back_buffer = self.full_screen_pixmap.copy()
-            painter = QPainter(back_buffer)
-            for x, y, width, height, image_data in packet.chunks:
-                decompressed_data = lz4.decompress(image_data)
-                chunk_image = QImage.fromData(decompressed_data)
-                if not chunk_image.isNull():
-                    painter.drawImage(x, y, chunk_image)
-            painter.end()
-            self.full_screen_pixmap = back_buffer
-            self.update_display()
-        except Exception as e:
-            print(f"Error handling frame update packet: {e}")
+    def handle_full_image_packet(self, packet):
+        """Legacy method - redirect to video stream handler"""
+        # For backward compatibility
+        pass
+
+    def handle_frame_update_packet(self, packet):
+        """Legacy method - redirect to video stream handler"""
+        # For backward compatibility
+        pass
 
     def update_display(self):
         if not self.full_screen_pixmap:
@@ -192,7 +186,7 @@ class RemoteWidget(QWidget):
                 self.showNormal()
                 self.fullscreen_btn.setText("🔲 Fullscreen")
             else:
-                self.disconnect_requested.emit()
+                self.disconnect_requested.emit(self.session_id)
         elif event.key() == Qt.Key.Key_F11:
             self.toggle_fullscreen()
         elif event.key() == Qt.Key.Key_F:
@@ -203,7 +197,9 @@ class RemoteWidget(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        self.disconnect_requested.emit()
+        if not self._cleanup_done:
+            self.disconnect_requested.emit(self.session_id)
+            self.cleanup()
         event.accept()
 
     def resizeEvent(self, event):
@@ -212,6 +208,18 @@ class RemoteWidget(QWidget):
             self.fit_to_screen()
 
     def cleanup(self):
-        self.full_screen_pixmap = None
-        if hasattr(self, "image_label"):
-            self.image_label.clear()
+        """Clean up resources when closing"""
+        if self._cleanup_done:
+            return
+
+        try:
+            self._cleanup_done = True
+
+            if self.controller:
+                self.controller.cleanup()
+
+            self.full_screen_pixmap = None
+            if hasattr(self, "image_label"):
+                self.image_label.clear()
+        except Exception as e:
+            print(f"Error during RemoteWidget cleanup: {e}")

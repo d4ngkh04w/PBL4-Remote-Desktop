@@ -8,6 +8,7 @@ import mss
 from common.packets import VideoStreamPacket
 from common.utils import capture_frame
 from common.h264encoder import H264Encoder
+from client.managers.connection_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class ScreenShareService:
 
                     if video_data:
                         packet = VideoStreamPacket(video_data=video_data)
-                        SocketClient.send_packet(packet)
+                        ConnectionManager.send_packet(packet)
 
                     elapsed = time.time() - frame_start
                     sleep_time = frame_delay - elapsed
@@ -88,5 +89,5 @@ class ScreenShareService:
                     final_data = encoder.flush()
                     if final_data:
                         packet = VideoStreamPacket(video_data=final_data)
-                        SocketClient.send_packet(packet)
+                        ConnectionManager.send_packet(packet)
                     encoder.close()

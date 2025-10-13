@@ -1,48 +1,57 @@
 import logging
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
-import sys
-import os
-
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from PyQt5.QtCore import QObject, pyqtSignal
 from client.managers.client_manager import ClientManager
-
-# from client.managers.connection_manager import ConnectionManager
 from common.utils import format_numeric_id
-
+from PyQt5.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindowController(QObject):
     """
-    Điều khiển chính cho cửa sổ chính.
+    Controller chính cho MainWindow (singleton)
     """
 
     _instance = None
 
-    # Signals for UI updates (run in main thread)
+    # Định nghĩa signals đúng kiểu
     update_status = pyqtSignal(str)  # message
     update_id_display = pyqtSignal(str)  # client_id
-    update_password_display = pyqtSignal(str)  # new_password
-    enable_tabs = pyqtSignal(bool)  # enable controller tab
+    update_password_display = pyqtSignal()  # không truyền gì
+    enable_tabs = pyqtSignal(bool)
     show_notification = pyqtSignal(str, str)  # message, type
-    create_remote_widget = pyqtSignal(
-        str
-    )  # session_id - signal to create remote widget
+    create_remote_widget = pyqtSignal(str)  # session_id
+
+    def __new__(cls, *args, **kwargs):
+        """Đảm bảo chỉ có 1 instance (Singleton)"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            logging.error("MainWindowController instance is not created yet.")
+        return cls._instance
 
     def __init__(self, main_window, config):
         super().__init__()
-        self.main_window = main_window
-        self._running = False
 
+        if getattr(self, "_initialized", False):
+            return  # Tránh init lại
+
+        self._initialized = True
+
+        self.main_window = main_window
         self.config = config
         self.connection_manager = None
+        self._running = False
 
-        # Set as singleton instance
-        MainWindowController._instance = self
+        # Dictionary to track active remote widgets by session_id
+        self.active_remote_widgets = {}
 
-        # Connect internal signals to UI methods
+        # Kết nối signal với UI
         self.update_status.connect(self._update_status_ui)
         self.update_id_display.connect(self._update_id_display_ui)
         self.enable_tabs.connect(self._enable_tabs_ui)
@@ -50,115 +59,67 @@ class MainWindowController(QObject):
         self.create_remote_widget.connect(self._create_remote_desktop_widget)
         self.update_password_display.connect(self._update_password_display_ui)
 
+    # ----------------------------
+    # Public interface
+    # ----------------------------
+
     def start(self):
-        """Bắt đầu điều khiển"""
         if self._running:
             return
-
         self._running = True
-        logger.info("MainWindowController started")
-
-        self.__initialize_network_connection()
+        logger.info("MainWindowController started")       
 
     def stop(self):
-        """Dừng điều khiển"""
         if not self._running:
             return
-
         self._running = False
         logger.info("MainWindowController stopped")
 
-    def __initialize_network_connection(self):
-        """
-        Khởi tạo và kết nối ConnectionManager.
-        """
-        from client.managers.connection_manager import ConnectionManager
+    # ----------------------------
+    # Connection event handlers
+    # ----------------------------
 
-        self.connection_manager = ConnectionManager(
-            self.config.get("server_host", "localhost"),
-            self.config.get("server_port", 12345),
-            self.config.get("use_ssl", False),
-            self.config.get("cert_file", None),
-        )
-        self.connection_manager.connect()
-        logger.debug("ConnectionManager initialized and connecting")
+    def on_connection_established(self):
+        self.update_status.emit("Connected to server")
 
-    # ====== METHODS FOR SIGNALS ======
-    @classmethod
-    def on_connection_established(cls):
-        """Handle connection established"""
-        if cls._instance:
-            cls._instance.update_status.emit("Connected to server", "success")
+    def on_connection_failed(self):
+        self.update_status.emit("Failed to connect to server", "error")
+        self._show_connection_error()
 
-    @classmethod
-    def on_connection_failed(cls):
-        """Handle connection failed"""
-        if cls._instance:
-            cls._instance.update_status.emit("Failed to connect to server", "error")
-            cls._instance._show_connection_error()
+    def on_connection_reconnecting(self, attempts: int):
+        self.update_status.emit(f"Reconnecting... ({attempts})", "info")
 
-    @classmethod
-    def on_connection_reconnecting(cls, data):
-        """Handle reconnecting to server"""
-        if cls._instance:
-            attempts = data.get("attempt", 0) if data else 0
-            cls._instance.update_status.emit(
-                f"Reconnecting to server... ({attempts})", "info"
-            )
+    def on_client_id_received(self):
+        self.update_id_display.emit(format_numeric_id(ClientManager.get_client_id()))
+        self.enable_tabs.emit(True)
 
-    @classmethod
-    def on_client_id_received(cls):
-        """Handle client ID received from server"""
-        if not cls._instance:
-            return
+    def on_ui_show_notification(self, message: str, notif_type: str):
+        self.show_notification.emit(message, notif_type)
 
-        cls._instance.update_id_display.emit(
-            format_numeric_id(ClientManager.get_client_id())
-        )
-        cls._instance.enable_tabs.emit(True)
+    def on_ui_update_status(self, message: str):
+        self.update_status.emit(message)
 
-    @classmethod
-    def on_ui_update_status(cls, message: str):
-        """Handle UI status update requests"""
-        if not cls._instance:
-            return
+    def on_create_remote_widget(self, session_id: str):
+        self.create_remote_widget.emit(session_id)
 
-        cls._instance.update_status.emit(message)
-
-    @classmethod
-    def on_ui_show_notification(cls, message: str, notif_type: str = "info"):
-        """Handle UI notification display requests"""
-        if not cls._instance:
-            return
-
-        cls._instance.show_notification.emit(message, notif_type)
-
-    # ====== CONTROLLER ACTIONS ======
-    @classmethod
-    def on_create_remote_widget(cls, session_id: str):
-        """Handle successful connection to host - show remote desktop"""
-        if cls._instance:
-            logger.info(
-                "Connected to host successfully, creating remote desktop widget"
-            )
-            cls._instance.create_remote_widget.emit()
+    # ----------------------------
+    # UI actions
+    # ----------------------------
 
     def connect_to_partner(self, host_id: str, host_pass: str):
-        """Handle connect to partner request"""
-        # Validation
         if not host_id:
             QMessageBox.warning(self.main_window, "Input Error", "Please enter Host ID")
             return False
 
         if len(host_id) != 9 or not host_id.isdigit():
             QMessageBox.warning(
-                self.main_window, "Invalid ID", "Host ID must be exactly 9 digits"
+                self.main_window, "Invalid ID", "Host ID must be 9 digits"
             )
             return False
 
         if host_id == ClientManager.get_client_id():
             QMessageBox.warning(
-                self.main_window, "Invalid ID", "Host ID cannot be your own ID"
+                self.main_window, "Invalid ID", "Host ID cannot be your own"
             )
             return False
 
@@ -168,52 +129,29 @@ class MainWindowController(QObject):
             )
             return False
 
-        # Update UI state
+        from client.handlers.send_handler import SendHandler
+
+        SendHandler.send_connection_request(host_id, host_pass)
+
         if hasattr(self.main_window, "connect_btn"):
             self.main_window.connect_btn.setEnabled(False)
             self.main_window.connect_btn.setText("🔄 Connecting...")
 
-        from client.handlers.controller_handler import ControllerHandler
+        self.update_status.emit("Connection request sent")
 
-        ControllerHandler.send_connection_request(host_id, host_pass)
-
-        self.update_status.emit("Connection request sent", "info")
-
-    # ====== UI UPDATE METHODS (THREAD-SAFE) ======
+    # ----------------------------
+    # UI update slots
+    # ----------------------------
 
     def _update_status_ui(self, message: str):
-        """Update status bar in main thread"""
-        if hasattr(self.main_window, "status_bar"):
-            self.main_window.status_bar.showMessage(message)
-        elif hasattr(self.main_window, "statusBar"):
+        if hasattr(self.main_window, "statusBar"):
             self.main_window.statusBar().showMessage(message)
 
     def _update_id_display_ui(self, client_id: str):
-        """Update ID display in main thread"""
-        logger.debug("_update_id_display_ui called with client_id: %s", client_id)
         if hasattr(self.main_window, "id_display"):
             self.main_window.id_display.setText(client_id)
-            logger.debug("ID display updated to: %s", client_id)
-            # Keep the original styling (don't clear it)
-            self.main_window.id_display.setStyleSheet(
-                """
-                QLabel {
-                    font-size: 28px;
-                    font-weight: bold;
-                    color: #0066cc;
-                    background-color: #f8f9fa;
-                    border: 2px dashed #0066cc;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 5px;
-                }
-                """
-            )
-        else:
-            logger.error("main_window does not have id_display attribute")
 
     def _show_notification_dialog(self, message: str, notif_type: str):
-        """Show notification message in main thread"""
         if notif_type == "error":
             QMessageBox.critical(self.main_window, "Error", message)
         elif notif_type == "warning":
@@ -222,136 +160,130 @@ class MainWindowController(QObject):
             QMessageBox.information(self.main_window, "Information", message)
 
     def _enable_tabs_ui(self, enable: bool):
-        """Enable/disable tabs in main thread"""
         if hasattr(self.main_window, "tabs"):
             self.main_window.tabs.setTabEnabled(1, enable)
 
-    def _show_connection_error(self):
-        """Show connection error in UI"""
-        if hasattr(self.main_window, "id_display"):
-            self.main_window.id_display.setText("Connection Failed")
-            self.main_window.id_display.setStyleSheet(
-                """
-                QLabel {
-                    font-size: 20px;
-                    font-weight: bold;
-                    color: #dc3545;
-                    background-color: #f8d7da;
-                    border: 2px dashed #dc3545;
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin: 5px;
-                }
-                """
-            )
-        self.enable_tabs.emit(False)
-
-    def _create_remote_desktop_widget(self):
-        """Create remote desktop widget for controller in a new resizable window"""
-        try:
-            # Import RemoteWidget
-            from client.gui.remote_widget import RemoteWidget
-
-            # Since we now use SocketClient as singleton, RemoteWidget can access it directly
-            # No need to pass socket_client instance anymore
-            self.main_window.remote_widget = RemoteWidget(None, None)
-
-            # Set window properties for resizable window
-            self.main_window.remote_widget.setWindowTitle("Remote Desktop - PBL4")
-            self.main_window.remote_widget.resize(1024, 768)  # Set initial size
-
-            # Make it a normal resizable window - just use default window flags
-            # The default flags already provide minimize, maximize, close buttons
-
-            # Connect disconnect signal from remote widget
-            self.main_window.remote_widget.disconnect_requested.connect(
-                self.disconnect_from_partner
-            )
-
-            # Show as normal window
-            self.main_window.remote_widget.show()
-
-            # Update connect button
-            if hasattr(self.main_window, "connect_btn"):
-                self.main_window.connect_btn.setText("🔌 Disconnect")
-                self.main_window.connect_btn.clicked.disconnect()
-                self.main_window.connect_btn.clicked.connect(
-                    self.disconnect_from_partner
-                )
-                self.main_window.connect_btn.setEnabled(True)
-
-            logger.info(
-                "Remote desktop widget created successfully as resizable window"
-            )
-
-        except Exception as e:
-            logger.error(f"Error creating remote widget: {e}")
-            self.reset_connect_button()
-
     def _update_password_display_ui(self):
-        """Update password display in main thread"""
+        ClientManager.generate_new_password()
         if hasattr(self.main_window, "password_display"):
-            ClientManager.generate_new_password()
             self.main_window.password_display.setText(ClientManager.get_password())
 
-    def _close_remote_desktop(self):
-        """Close remote desktop widget"""
-        if (
-            hasattr(self.main_window, "remote_widget")
-            and self.main_window.remote_widget
-        ):
-            # Close the fullscreen window
-            self.main_window.remote_widget.close()
-
-            # Cleanup widget
-            if hasattr(self.main_window.remote_widget, "cleanup"):
-                self.main_window.remote_widget.cleanup()
-            self.main_window.remote_widget = None
-
-    def reset_connect_button(self):
-        """Reset connect button state"""
-        if hasattr(self.main_window, "connect_btn"):
-            self.main_window.connect_btn.setText("🔗 Connect to Partner")
-            self.main_window.connect_btn.setEnabled(True)
-
-            # Reconnect to controller connect method
-            try:
-                self.main_window.connect_btn.clicked.disconnect()
-            except:
-                pass
-
-            self.main_window.connect_btn.clicked.connect(
-                lambda: self.connect_to_partner(
-                    (
-                        self.main_window.host_id_input.text().strip()
-                        if hasattr(self.main_window, "host_id_input")
-                        else ""
-                    ),
-                    (
-                        self.main_window.host_pass_input.text().strip()
-                        if hasattr(self.main_window, "host_pass_input")
-                        else ""
-                    ),
+    def _create_remote_desktop_widget(self, session_id: str):
+        """Create remote desktop widget for controlling partner's screen"""
+        try:
+            # Check if widget for this session already exists
+            if session_id in self.active_remote_widgets:
+                # Bring existing widget to front
+                existing_widget = self.active_remote_widgets[session_id]
+                existing_widget.show()
+                existing_widget.raise_()
+                existing_widget.activateWindow()
+                logger.debug(
+                    f"Brought existing remote widget to front for session: {session_id}"
                 )
+                return
+
+            # Create new remote widget
+            from client.gui.remote_widget import RemoteWidget
+
+            remote_widget = RemoteWidget(session_id)
+
+            # Track the widget
+            self.active_remote_widgets[session_id] = remote_widget
+
+            # Connect disconnect signal
+            remote_widget.disconnect_requested.connect(
+                self._handle_remote_widget_disconnect
             )
 
-    # ====== CLEANUP ======
+            # Show the widget as a separate window
+            remote_widget.show()
 
-    def cleanup(self):
-        """Clean up controller resources"""
-        try:
-            self.stop()
+            logger.debug(f"Created new remote desktop widget for session: {session_id}")
 
-            if (
-                hasattr(self.main_window, "remote_widget")
-                and self.main_window.remote_widget
-            ):
-                self._close_remote_desktop()
-
-            if self.connection_manager:
-                self.connection_manager.disconnect
-
-            logger.info("MainWindowController cleanup completed")
+            if hasattr(self.main_window, "status_bar"):
+                self.main_window.status_bar.showMessage(
+                    f"Remote session started: {session_id}", 5000
+                )
 
         except Exception as e:
-            logger.error(f"Error during controller cleanup: {e}")
+            logger.error(f"Error creating remote desktop widget: {e}")
+            self.show_notification.emit(
+                f"Failed to create remote desktop: {str(e)}", "error"
+            )
+
+    def _handle_remote_widget_disconnect(self, session_id: str):
+        """Handle disconnect from remote widget"""
+        try:
+            # Remove from tracking
+            if session_id in self.active_remote_widgets:
+                widget = self.active_remote_widgets.pop(session_id)
+                widget.cleanup()
+
+            logger.debug(f"Remote widget disconnected for session: {session_id}")
+
+            # Notify handlers about disconnection
+            from client.handlers.send_handler import SendHandler
+            SendHandler.send_end_session_packet(session_id)
+
+        except Exception as e:
+            logger.error(f"Error handling remote widget disconnect: {e}")
+
+    # def get_remote_widget(self, session_id: str):
+    #     """Get remote widget for a specific session"""
+    #     return self.active_remote_widgets.get(session_id)
+
+    def close_all_remote_widgets(self):
+        """Close all active remote widgets"""
+        try:
+            for widget in list(self.active_remote_widgets.values()):
+                widget.close()
+            self.active_remote_widgets.clear()
+            logger.info("All remote widgets closed")
+        except Exception as e:
+            logger.error(f"Error closing remote widgets: {e}")
+
+    # ----------------------------
+    # Helper
+    # ----------------------------
+
+    def copy_id_to_clipboard(self):
+        """Copy ID to clipboard"""
+        from client.managers.client_manager import ClientManager
+
+        client_id = ClientManager.get_client_id()
+        if client_id:
+            clipboard = QApplication.clipboard()
+            if clipboard is not None:
+                clipboard.setText(client_id)
+                if self.main_window.status_bar is not None:
+                    self.main_window.status_bar.showMessage(
+                        "ID copied to clipboard!", 2000
+                    )
+
+    def copy_password_to_clipboard(self):
+        """Copy password to clipboard"""
+        from client.managers.client_manager import ClientManager
+
+        password = ClientManager.get_password()
+        if password:
+            clipboard = QApplication.clipboard()
+            if clipboard is not None:
+                clipboard.setText(password)
+                if self.main_window.status_bar is not None:
+                    self.main_window.status_bar.showMessage(
+                        "Password copied to clipboard!", 2000
+                    )
+
+   
+
+    def _show_connection_error(self):
+        if hasattr(self.main_window, "id_display"):
+            self.main_window.id_display.setText("Connection Failed")
+
+    def cleanup(self):
+        self.stop()
+
+        # Close all remote widgets
+        self.close_all_remote_widgets()
+        logger.info("MainWindowController cleanup completed")

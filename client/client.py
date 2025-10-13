@@ -4,6 +4,11 @@ import sys
 from PyQt5.QtWidgets import QApplication
 
 from client.gui.main_window import MainWindow
+import socket
+import ssl
+from client.services.listener_service import ListenerService
+from client.services.sender_service import SenderService
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,7 @@ class RemoteDesktopClient:
         }
         self.app = None
         self.main_window = None
+        self.socket = None
 
     def __initialize_qt_application(self):
         """Khởi tạo ứng dụng QApplication."""
@@ -49,6 +55,78 @@ class RemoteDesktopClient:
             logger.error(f"Failed to create main window - {e}")
             return False
 
+    # def __create_connection_manager(self):
+    #     """
+    #     Tạo ConnectionManager để quản lý kết nối đến server.
+    #     """
+    #     try:
+    #         self.connection_manager = ConnectionManager(
+    #             self.config["server_host"],
+    #             self.config["server_port"],
+    #             self.config["use_ssl"],
+    #             self.config["cert_file"],
+    #         )
+    #         logger.info("Connection manager created successfully.")
+    #         self.connection_manager.connect()
+    #         return True
+    #     except Exception as e:
+    #         logger.error(f"Failed to create connection manager - {e}")
+    #         return False
+
+    def _connect_to_server(self):
+        """Kết nối đến server."""
+        try:
+            plain_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if self.config["use_ssl"]:
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                context.load_verify_locations(self.config["cert_file"])
+                context.verify_mode = ssl.CERT_REQUIRED
+                context.check_hostname = False
+                self.socket = context.wrap_socket(
+                    plain_socket, server_hostname=self.config["server_host"]
+                )
+            else:
+                self.socket = plain_socket
+
+            self.socket.settimeout(10)
+            self.socket.connect(
+                (self.config["server_host"], self.config["server_port"])
+            )
+            logger.info(
+                f"Successfully connected to server at {self.config['server_host']}:{self.config['server_port']}"
+            )
+
+            # Khởi tạo các dịch vụ sau khi kết nối thành công
+            if not self._init_services():
+                logger.error("Failed to initialize services")
+                return False
+
+            from client.controllers.main_window_controller import MainWindowController
+
+            controller = MainWindowController.get_instance()
+            if controller:
+                controller.on_connection_established()
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to connect to server - {e}")
+            return False
+
+    def _init_services(self):
+        """Khởi tạo dịch vụ Listener và Sender."""
+        try:
+            if self.socket:
+                ListenerService.initialize(self.socket)
+                SenderService.initialize(self.socket)
+                logger.debug("Listener and Sender services initialized successfully.")
+                return True
+            else:
+                logger.error("Socket is None, cannot initialize services")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to initialize services - {e}")
+            return False
+
     def run(self):
         """
         Chạy ứng dụng: Khởi tạo Qt, tạo cửa sổ, hiển thị và chạy vòng lặp sự kiện.
@@ -62,6 +140,18 @@ class RemoteDesktopClient:
                 logger.error("Failed to create main window.")
                 return -1
 
+            # Hiển thị cửa sổ chính
+            if self.main_window:
+                self.main_window.show()
+                logger.info("Main window displayed successfully.")
+            else:
+                logger.error("Main window is None, cannot display")
+                return -1
+
+            if not self._connect_to_server():
+                logger.error("Failed to connect to server.")
+                return -1
+
             if self.app is not None:
                 return self.app.exec_()
             else:
@@ -71,3 +161,22 @@ class RemoteDesktopClient:
         except Exception as e:
             logger.error(f"Failed to start application - {e}")
             return -1
+
+    def shutdown(self):
+        """Dọn dẹp tài nguyên khi đóng ứng dụng."""
+        try:
+            if self.main_window:
+                self.main_window.cleanup()
+                self.main_window = None
+
+            if self.app:
+                self.app.quit()
+                self.app = None
+
+            # Shutdown services using class methods
+            ListenerService.shutdown()
+            SenderService.shutdown()
+
+            logger.info("Client application shutdown completed.")
+        except Exception as e:
+            logger.error(f"Error during client shutdown - {e}")
