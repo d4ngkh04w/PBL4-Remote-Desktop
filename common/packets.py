@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Union
 
 from common.enums import (
     PacketType,
@@ -131,14 +131,40 @@ class VideoStreamPacket(BasePacket):
     Gói tin chứa luồng video
     """
 
-    def __init__(self, video_data: bytes):
+    def __init__(
+        self,
+        session_id: str,
+        video_data: bytes,
+    ):
         super().__init__(PacketType.VIDEO_STREAM)
         self.video_data = video_data
+        self.session_id = session_id
 
     def __repr__(self):
-        return (
-            f"VideoStreamPacket(type={self.packet_type}, size={len(self.video_data)})"
-        )
+        return f"VideoStreamPacket(type={self.packet_type}, size={len(self.video_data)}, session_id={self.session_id})"
+
+
+class VideoConfigPacket(BasePacket):
+    """
+    Packet cấu hình video
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        width: int,
+        height: int,
+        fps: int,
+        codec: str,
+        extradata: bytes | None = None,
+    ):
+        super().__init__(PacketType.VIDEO_CONFIG)
+        self.session_id = session_id
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.codec = codec  # "h264"
+        self.extradata = extradata  # SPS/PPS
 
 
 class KeyboardPacket(BasePacket):
@@ -148,14 +174,14 @@ class KeyboardPacket(BasePacket):
 
     def __init__(
         self,
+        session_id: str,
         event_type: KeyBoardEventType,
         key_type: KeyBoardType,
-        key_name: Optional[
-            str
-        ] = None,  # Tên của phím đặc biệt, ví dụ: 'ctrl_l', 'shift'
-        key_vk: Optional[int] = None,  # Mã phím ảo (Virtual-key code) của phím ký tự
+        key_name: str | None = None,  # Tên của phím đặc biệt, ví dụ: 'ctrl_l', 'shift'
+        key_vk: int | None = None,  # Mã phím ảo (Virtual-key code) của phím ký tự
     ):
         super().__init__(PacketType.KEYBOARD)
+        self.session_id = session_id
         self.event_type = event_type
         self.key_type = key_type
         self.key_name = key_name
@@ -172,12 +198,14 @@ class MousePacket(BasePacket):
 
     def __init__(
         self,
+        session_id: str,
         event_type: MouseEventType,
         position: tuple[int, int],
         button: MouseButton = MouseButton.UNKNOWN,
         scroll_delta: tuple[int, int] = (0, 0),
     ):
         super().__init__(PacketType.MOUSE)
+        self.session_id = session_id
         self.event_type = event_type
         self.button = button
         self.position = position
@@ -198,4 +226,5 @@ Packet = Union[
     AuthenticationPasswordPacket,
     SessionPacket,
     VideoStreamPacket,
+    VideoConfigPacket,
 ]

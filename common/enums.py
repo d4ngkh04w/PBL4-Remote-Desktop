@@ -59,6 +59,7 @@ class PacketType(Enum):
     CHAT_MESSAGE = 10
     FILE_TRANSFER = 11
     VIDEO_STREAM = 12
+    VIDEO_CONFIG = 13
 
 
 class Status(Enum):

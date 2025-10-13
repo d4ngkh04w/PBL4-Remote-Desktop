@@ -51,17 +51,11 @@ def unformat_numeric_id(formatted_id: str) -> str:
     return formatted_id.replace(" ", "")
 
 
-# def get_cursor_pos():
-#     """Lấy vị trí chuột hiện tại (x, y)"""
-#     mouse = Controller()
-#     return int(mouse.position[0]), int(mouse.position[1])
-
-
 def capture_frame(
     sct_instance: MSSBase,
     monitor: dict,
-    mouse_controller: Controller,
-    draw_cursor: bool = True,
+    mouse_controller: Controller | None = None,
+    draw_cursor: bool = False,
 ) -> Image.Image | None:
     try:
         # Chụp màn hình
@@ -70,7 +64,7 @@ def capture_frame(
         # BGRX loại bỏ kênh Alpha không cần thiết
         img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
 
-        if draw_cursor:
+        if draw_cursor and mouse_controller:
             # Lấy vị trí chuột toàn cục
             mouse_x, mouse_y = mouse_controller.position
 
@@ -96,35 +90,8 @@ def capture_frame(
                 draw.ellipse(ellipse_bbox, fill=(255, 0, 0), outline=(0, 0, 0))
 
             return img_pil
-    except mss.ScreenShotError as e:
+    except mss.ScreenShotError:
         return None
-
-
-# def capture_screen() -> Image.Image:
-#     """Capture screen và trả về đối tượng PIL Image"""
-#     img_pil = Image.new("RGB", (1, 1), (0, 0, 0))
-#     if sys.platform == "linux":
-#         sct = mss.mss(with_cursor=True)
-#     elif sys.platform == "win32":
-#         sct = mss.mss()
-
-#     monitor = sct.monitors[1]
-#     img = sct.grab(monitor)
-#     img_pil = Image.frombytes("RGB", img.size, img.rgb)
-
-#     if sys.platform == "linux":
-#         sct.close()
-#         return img_pil
-#     elif sys.platform == "win32":
-#         cursor_x, cursor_y = get_cursor_pos()
-#         draw = ImageDraw.Draw(img_pil)
-#         draw.ellipse(
-#             (cursor_x - 5, cursor_y - 5, cursor_x + 5, cursor_y + 5),
-#             fill=(255, 0, 0),
-#             outline=(0, 0, 0),
-#         )
-#         sct.close()
-#         return img_pil
 
 
 def get_hostname() -> str:

@@ -147,7 +147,7 @@ class Server:
             try:
                 packet = send_queue.get(timeout=1)
                 Protocol.send_packet(client_socket, packet)
-                send_queue.task_done()
+                # send_queue.task_done()
             except queue.Empty:
                 continue
             except Exception:
