@@ -42,8 +42,10 @@ class H264Encoder:
 
         self.frame_count += 1
         packets = self.codec.encode(frame)
+        if not packets:
+            return None
 
-        return b"".join(bytes(p) for p in packets) if packets else None
+        return b"".join(bytes(p) for p in packets)
 
     def get_extradata(self) -> bytes | None:
         """Lấy SPS/PPS headers."""

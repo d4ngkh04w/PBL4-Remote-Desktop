@@ -90,9 +90,7 @@ class RelayHandler:
     def __process_packet(packet: Packet, sender_socket: socket.socket | ssl.SSLSocket):
         sender_info = ClientManager.get_client_info(sender_socket)
         if not sender_info:
-            logger.warning(
-                "Could not find sender info for the socket. Dropping packet."
-            )
+            logger.warning("Could not find sender info for the socket. Dropping packet")
             return
 
         sender_id = sender_info["id"]
@@ -213,34 +211,38 @@ class RelayHandler:
     ):
         """Chuyển tiếp các gói tin stream"""
 
-        session_id, session_info = SessionManager.get_client_session(sender_id)
-        if not session_info or not session_id:
+        session = SessionManager.get_all_sessions(sender_id)
+        if not session:
             logger.warning(f"Session not found for sender {sender_id}. Dropping packet")
             return
 
-        if packet.session_id != session_id:
+        if packet.session_id not in session:
             logger.warning(
-                f"Packet session_id {packet.session_id} does not match sender's session_id {session_id}. Dropping packet"
+                f"Packet session_id {packet.session_id} not in sender's active sessions. Dropping packet"
             )
             return
 
         receiver_id = (
-            session_info["controller_id"]
-            if session_info["host_id"] == sender_id
-            else session_info["host_id"]
+            session[packet.session_id]["controller_id"]
+            if session[packet.session_id]["host_id"] == sender_id
+            else session[packet.session_id]["host_id"]
         )
 
         receiver_queue = ClientManager.get_client_queue(str(receiver_id))
         sender_queue = ClientManager.get_client_queue(sender_id)
-        response = SessionPacket(status=Status.SESSION_ENDED, session_id=session_id)
+        response = SessionPacket(
+            status=Status.SESSION_ENDED, session_id=str(session["session_id"])
+        )
 
         if not SessionManager.is_client_in_session(
-            sender_id, session_id
-        ) or not SessionManager.is_client_in_session(str(receiver_id), session_id):
+            sender_id, packet.session_id
+        ) or not SessionManager.is_client_in_session(
+            str(receiver_id), packet.session_id
+        ):
             logger.warning(
-                f"One of the clients is no longer in session, ending session {session_id}"
+                f"One of the clients is no longer in session, ending session {packet.session_id}"
             )
-            SessionManager.end_session(session_id)
+            SessionManager.end_session(packet.session_id)
             if sender_queue:
                 sender_queue.put(response)
             if receiver_queue:

@@ -8,6 +8,7 @@ import mss
 from common.packets import VideoStreamPacket, VideoConfigPacket
 from common.h264 import H264Encoder
 from common.utils import capture_frame
+from client.services.sender_service import SenderService
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class ScreenShareService:
                             codec="h264",
                             extradata=extradata,
                         )
-                        SocketClient.send_packet(config)
+                        SenderService.send_packet(config)
 
                 # Main loop
                 while self._is_running.is_set():
@@ -110,7 +111,7 @@ class ScreenShareService:
                         packet = VideoStreamPacket(
                             session_id=self._session_id, video_data=video_data
                         )
-                        SocketClient.send_packet(packet)
+                        SenderService.send_packet(packet)
 
                     loop_time = time.perf_counter() - loop_start
 
@@ -125,5 +126,9 @@ class ScreenShareService:
                 if encoder:
                     final_data = encoder.flush()
                     if final_data:
-                        SocketClient.send_packet(VideoStreamPacket(final_data))
+                        SenderService.send_packet(
+                            VideoStreamPacket(
+                                session_id=self._session_id, video_data=final_data
+                            )
+                        )
                     encoder.close()

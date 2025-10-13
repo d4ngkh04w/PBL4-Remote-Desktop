@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QLineEdit,
     QStatusBar,
-    QApplication,
 )
 from PyQt5.QtCore import Qt
 
@@ -35,21 +34,20 @@ class MainWindow(QMainWindow):
         self.host_id_input = None
         self.host_pass_input = None
 
-        self.tabs = None
+        self.tabs: QTabWidget = QTabWidget()
         self.status_bar = None
-        self.remote_widget = None
 
         # Track cleanup state
         self._cleanup_done = False
 
-        # Setup UI
-        self.init_ui()
-
         # Initialize controller for business logic
-        self.controller = MainWindowController(self, self.config)
+        self.controller = MainWindowController(self, config)
 
         # Start controller after UI is ready
         self.controller.start()
+
+        # Setup UI
+        self.init_ui()
 
         self.controller.update_password_display.emit()
 
@@ -81,7 +79,6 @@ class MainWindow(QMainWindow):
         )
 
         # Central widget with tabs
-        self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
         # Create tabs only after self.tabs is initialized
@@ -221,12 +218,12 @@ class MainWindow(QMainWindow):
         copy_id_btn = QPushButton("📋 Copy ID")
         copy_id_btn.setMinimumHeight(40)
         copy_id_btn.setStyleSheet(self.refresh_btn.styleSheet())
-        copy_id_btn.clicked.connect(self.copy_id_to_clipboard)
+        copy_id_btn.clicked.connect(self.controller.copy_id_to_clipboard)
 
         copy_pass_btn = QPushButton("📋 Copy Password")
         copy_pass_btn.setMinimumHeight(40)
         copy_pass_btn.setStyleSheet(self.refresh_btn.styleSheet())
-        copy_pass_btn.clicked.connect(self.copy_password)
+        copy_pass_btn.clicked.connect(self.controller.copy_password_to_clipboard)
 
         btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(copy_id_btn)
@@ -339,26 +336,6 @@ class MainWindow(QMainWindow):
         else:
             if self.status_bar is not None:
                 self.status_bar.showMessage("Input fields are not ready.", 5000)
-
-    # def copy_id_to_clipboard(self):
-    #     """Copy ID to clipboard"""
-    #     if:
-    #         client_id = AuthService.get_client_id()
-    #         clipboard = QApplication.clipboard()
-    #         if clipboard is not None:
-    #             clipboard.setText(client_id)
-    #             if self.status_bar is not None:
-    #                 self.status_bar.showMessage("ID copied to clipboard!", 2000)
-
-    # def copy_password(self):
-    #     """Copy password to clipboard"""
-    #     if AuthService:
-    #         password = AuthService.get_password()
-    #         clipboard = QApplication.clipboard()
-    #         if clipboard is not None:
-    #             clipboard.setText(password)
-    #             if self.status_bar is not None:
-    #                 self.status_bar.showMessage("Password copied to clipboard!", 2000)
 
     def closeEvent(self, event):
         """Handle window close event"""

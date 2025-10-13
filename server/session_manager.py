@@ -120,22 +120,22 @@ class SessionManager:
         with cls.__lock:
             return cls.__active_session.get(session_id)
 
-    @classmethod
-    def get_client_session(
-        cls,
-        client_id: str,
-    ) -> tuple[Optional[str], Optional[dict[str, Union[str, float]]]]:
-        """Lấy session của một client"""
-        with cls.__lock:
-            return next(
-                (
-                    (session_id, info)
-                    for session_id, info in cls.__active_session.items()
-                    if info["controller_id"] == client_id
-                    or info["host_id"] == client_id
-                ),
-                (None, None),
-            )
+    # @classmethod
+    # def get_client_session(
+    #     cls,
+    #     client_id: str,
+    # ) -> tuple[Optional[str], Optional[dict[str, Union[str, float]]]]:
+    #     """Lấy session của một client"""
+    #     with cls.__lock:
+    #         return next(
+    #             (
+    #                 (session_id, info)
+    #                 for session_id, info in cls.__active_session.items()
+    #                 if info["controller_id"] == client_id
+    #                 or info["host_id"] == client_id
+    #             ),
+    #             (None, None),
+    #         )
 
     @classmethod
     def get_all_sessions(

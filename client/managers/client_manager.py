@@ -1,4 +1,5 @@
 import logging
+
 from common.password_manager import PasswordManager
 
 logger = logging.getLogger(__name__)

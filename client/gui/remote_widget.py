@@ -1,6 +1,5 @@
-import lz4.frame as lz4
+import logging
 
-from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget,
     QLabel,
@@ -13,20 +12,32 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter
 from PyQt5.QtCore import Qt, pyqtSignal
-from common.packets import ImagePacket, FrameUpdatePacket
+
+from client.controllers.remote_widget_controller import RemoteWidgetController
+from common.packets import VideoStreamPacket, VideoConfigPacket
+from common.h264 import H264Decoder
+
+logger = logging.getLogger(__name__)
 
 
 class RemoteWidget(QWidget):
-    disconnect_requested = pyqtSignal()
+    disconnect_requested = pyqtSignal(str)  # Emit session_id when disconnect
 
-    def __init__(self, network_client: Optional[SocketClient] = None, parent=None):
-        super().__init__(parent)
-        # With SocketClient as singleton, we don't need to store instance
-        # Keep for backward compatibility but won't use it
-        self.network_client = network_client
+    def __init__(self, session_id: str):
+        super().__init__()
+        self.session_id = session_id
         self.original_width = 0
         self.original_height = 0
         self.full_screen_pixmap = None
+        self.controller = RemoteWidgetController(self, self.session_id)
+
+        # Track cleanup state
+        self._cleanup_done = False
+        self.decoder = None
+        self.frame_count = 0
+
+        self._cleanup_done = False
+
         self.init_ui()
 
     def init_ui(self):
@@ -36,6 +47,9 @@ class RemoteWidget(QWidget):
         self.create_control_toolbar(main_layout)
         self.create_screen_area(main_layout)
         self.create_status_area(main_layout)
+
+        # Set window title with session ID
+        self.setWindowTitle(f"Remote Desktop - Session: {self.session_id}")
 
     def create_control_toolbar(self, parent_layout):
         toolbar_group = QGroupBox("Remote Control")
@@ -58,7 +72,9 @@ class RemoteWidget(QWidget):
         toolbar_layout.addWidget(self.fullscreen_btn)
 
         self.disconnect_btn = QPushButton("❌ Disconnect")
-        self.disconnect_btn.clicked.connect(self.disconnect_requested.emit)
+        self.disconnect_btn.clicked.connect(
+            lambda: self.disconnect_requested.emit(self.session_id)
+        )
         toolbar_layout.addWidget(self.disconnect_btn)
 
         parent_layout.addWidget(toolbar_group)
@@ -87,53 +103,89 @@ class RemoteWidget(QWidget):
         status_layout.addStretch()
         parent_layout.addLayout(status_layout)
 
-    def handle_full_image_packet(self, packet: ImagePacket):
+    def handle_video_config_packet(self, packet: VideoConfigPacket):
+        """
+        Nhận config packet và khởi tạo decoder.
+        Được gọi TRƯỚC khi nhận video frames.
+        """
         try:
-            decompressed_data = lz4.decompress(packet.image_data)
-            image = QImage.fromData(decompressed_data)
-            if not image.isNull():
-                self.full_screen_pixmap = QPixmap.fromImage(image)
-                self.original_width = (
-                    packet.original_width
-                    if packet.original_width > 0
-                    else image.width()
-                )
-                self.original_height = (
-                    packet.original_height
-                    if packet.original_height > 0
-                    else image.height()
-                )
-                self.update_display()
-                self.info_label.setText(
-                    f"Resolution: {self.original_width}x{self.original_height}"
-                )
-                self.status_label.setText("🔗 Connected - Receiving")
-        except Exception as e:
-            self.show_error(f"Error handling image: {str(e)}")
+            self.original_width = packet.width
+            self.original_height = packet.height
 
-    def handle_frame_update_packet(self, packet: FrameUpdatePacket):
-        if self.full_screen_pixmap is None:
-            return
-        try:
-            back_buffer = self.full_screen_pixmap.copy()
-            painter = QPainter(back_buffer)
-            for x, y, width, height, image_data in packet.chunks:
-                decompressed_data = lz4.decompress(image_data)
-                chunk_image = QImage.fromData(decompressed_data)
-                if not chunk_image.isNull():
-                    painter.drawImage(x, y, chunk_image)
-            painter.end()
-            self.full_screen_pixmap = back_buffer
-            self.update_display()
+            self.decoder = H264Decoder(extradata=packet.extradata)
+
+            # Update UI
+            self.info_label.setText(
+                f"Resolution: {packet.width}x{packet.height} | "
+                f"FPS: {packet.fps} | Codec: {packet.codec.upper()}"
+            )
+            self.status_label.setText("🎥 Streaming")
+
         except Exception as e:
-            print(f"Error handling frame update packet: {e}")
+            logger.error(f"Error initializing decoder: {e}", exc_info=True)
+            self.show_error(f"Decoder init failed: {e}")
+
+    def handle_video_stream_packet(self, packet: VideoStreamPacket):
+        """
+        Nhận video packet, decode và hiển thị.
+        """
+        try:
+            if not self.decoder:
+                logger.warning("Received video packet but decoder not initialized!")
+                self.show_error("Decoder not ready")
+                return
+
+            pil_image = self.decoder.decode(packet.video_data)
+
+            if not pil_image:
+                logger.debug("No image decoded (might be B-frame)")
+                return
+
+            self.frame_count += 1
+
+            # Convert PIL Image → QPixmap
+            # PIL RGB → QImage
+            img_data = pil_image.tobytes("raw", "RGB")
+            qimage = QImage(
+                img_data,
+                pil_image.width,
+                pil_image.height,
+                pil_image.width * 3,
+                QImage.Format.Format_RGB888,
+            )
+
+            # QImage → QPixmap
+            self.full_screen_pixmap = QPixmap.fromImage(qimage)
+
+            # Display
+            self.update_display()
+
+            # Update stats mỗi 30 frames
+            if self.frame_count % 30 == 0:
+                logger.debug(f"Decoded {self.frame_count} frames")
+
+        except Exception as e:
+            logger.error(f"Error handling video packet: {e}", exc_info=True)
+            self.show_error(f"Decode error: {e}")
+
+    # def handle_full_image_packet(self, packet):
+    #     """Legacy method - redirect to video stream handler"""
+    #     # For backward compatibility
+    #     pass
+
+    # def handle_frame_update_packet(self, packet):
+    #     """Legacy method - redirect to video stream handler"""
+    #     # For backward compatibility
+    #     pass
 
     def update_display(self):
+        """Update display với frame mới."""
         if not self.full_screen_pixmap:
             return
         self.fit_to_screen()
 
     def fit_to_screen(self):
+        """Fit image to window size."""
         if not self.full_screen_pixmap:
             return
         available_size = self.scroll_area.size()
@@ -148,6 +200,7 @@ class RemoteWidget(QWidget):
         self.image_label.resize(scaled_pixmap.size())
 
     def actual_size(self):
+        """Display at actual size."""
         if not self.full_screen_pixmap:
             return
         if self.original_width > 0 and self.original_height > 0:
@@ -163,7 +216,7 @@ class RemoteWidget(QWidget):
         self.image_label.resize(scaled_pixmap.size())
 
     def toggle_fullscreen(self):
-        """Toggle between fullscreen and normal window mode"""
+        """Toggle fullscreen."""
         if self.isFullScreen():
             self.showNormal()
             self.fullscreen_btn.setText("🔲 Fullscreen")
@@ -172,27 +225,31 @@ class RemoteWidget(QWidget):
             self.fullscreen_btn.setText("🔳 Exit Fullscreen")
 
     def show_error(self, message):
+        """Show error message."""
         self.image_label.clear()
         self.image_label.setText(f"❌ Error: {message}")
         self.status_label.setText("⚠️ Connection Error")
 
     def show_waiting(self):
+        """Show waiting message."""
         self.image_label.clear()
         self.image_label.setText("🖥️ Waiting for remote screen...")
         self.status_label.setText("🔗 Connected - Waiting")
 
     def show_disconnected(self):
+        """Show disconnected message."""
         self.image_label.clear()
         self.image_label.setText("❌ Disconnected")
         self.status_label.setText("❌ Disconnected")
 
     def keyPressEvent(self, event):
+        """Handle keyboard shortcuts."""
         if event.key() == Qt.Key.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
                 self.fullscreen_btn.setText("🔲 Fullscreen")
             else:
-                self.disconnect_requested.emit()
+                self.disconnect_requested.emit(self.session_id)
         elif event.key() == Qt.Key.Key_F11:
             self.toggle_fullscreen()
         elif event.key() == Qt.Key.Key_F:
@@ -203,15 +260,43 @@ class RemoteWidget(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        self.disconnect_requested.emit()
+        """Handle window close."""
+        if not self._cleanup_done:
+            self.disconnect_requested.emit(self.session_id)
+            self.cleanup()
         event.accept()
 
     def resizeEvent(self, event):
+        """Handle window resize."""
         super().resizeEvent(event)
         if self.full_screen_pixmap and hasattr(self, "fit_screen_btn"):
             self.fit_to_screen()
 
     def cleanup(self):
-        self.full_screen_pixmap = None
-        if hasattr(self, "image_label"):
-            self.image_label.clear()
+        """Clean up resources."""
+        if self._cleanup_done:
+            return
+
+        try:
+            self._cleanup_done = True
+
+            # Close decoder
+            if self.decoder:
+                logger.info(f"Closing decoder (decoded {self.frame_count} frames)")
+                self.decoder.close()
+                self.decoder = None
+
+            # Cleanup controller
+            if self.controller:
+                self.controller.cleanup()
+
+            self.full_screen_pixmap = None
+            if hasattr(self, "image_label"):
+                self.image_label.clear()
+
+            logger.info(
+                f"RemoteWidget cleanup completed for session: {self.session_id}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during RemoteWidget cleanup: {e}")
