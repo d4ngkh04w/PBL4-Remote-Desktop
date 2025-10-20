@@ -163,13 +163,14 @@ class RelayHandler:
                 host_id=sender_id,
                 timeout=Config.session_timeout,
             )
-            session_packet = SessionPacket(
-                status=Status.SESSION_STARTED, session_id=session_id
+            host_session_packet = SessionPacket(
+                status=Status.SESSION_STARTED, session_id=session_id, role="host"
             )
-            session_packet.role = "HOST"
-            sender_queue.put(session_packet)
-            session_packet.role = "CONTROLLER"
-            receiver_queue.put(session_packet)
+            controller_session_packet = SessionPacket(
+                status=Status.SESSION_STARTED, session_id=session_id, role="controller"
+            )
+            sender_queue.put(host_session_packet)
+            receiver_queue.put(controller_session_packet)
         else:
             receiver_queue.put(packet)
 
@@ -231,7 +232,7 @@ class RelayHandler:
         receiver_queue = ClientManager.get_client_queue(str(receiver_id))
         sender_queue = ClientManager.get_client_queue(sender_id)
         response = SessionPacket(
-            status=Status.SESSION_ENDED, session_id=str(session["session_id"])
+            status=Status.SESSION_ENDED, session_id=packet.session_id
         )
 
         if not SessionManager.is_client_in_session(

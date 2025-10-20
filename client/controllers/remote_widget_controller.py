@@ -1,135 +1,165 @@
+# remote_widget_controller.py
 import logging
 
-from PyQt5.QtCore import QObject, pyqtSignal
-
-from common.packets import VideoStreamPacket, VideoConfigPacket
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtGui import QPixmap
 
 logger = logging.getLogger(__name__)
 
 
 class RemoteWidgetController(QObject):
-    """Controller for RemoteWidget - handles communication and events."""
+    """Controller cho RemoteWidget - xử lý logic, giao tiếp và giải mã video."""
 
-    # Signals
-    update_status = pyqtSignal(str)
-    show_error = pyqtSignal(str)
+    # --- Signals gửi đi cho View (RemoteWidget) ---
+    frame_decoded = pyqtSignal(QPixmap)
+    status_updated = pyqtSignal(str)
+    info_updated = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+    disconnected = pyqtSignal()
+    toggle_fullscreen = pyqtSignal()
 
     def __init__(self, remote_widget, session_id: str):
         super().__init__()
         self.remote_widget = remote_widget
         self.session_id = session_id
-        self._running = False
 
-        # Connect signals
-        self.update_status.connect(self._update_status_ui)
-        self.show_error.connect(self._show_error_ui)
-        self.remote_widget.disconnect_requested.connect(self.handle_disconnect_request)
+        self.original_width = 0
+        self.original_height = 0
+        self.full_screen_pixmap: QPixmap | None = None
+        self._is_fitting_screen = True  # Mặc định là fit to screen
+
+        self._running = False
+        self._cleanup_done = False
+
+        self._connect_signals()
 
         logger.info(f"RemoteWidgetController initialized for session: {session_id}")
+        self.start()
 
-    def handle_video_config_packet(self, packet: VideoConfigPacket):
-        """
-        Handle video config packet - setup decoder.
-        Được gọi TRƯỚC khi nhận video frames.
-        """
+    def _connect_signals(self):
+        """Kết nối signals từ View đến slots của Controller và ngược lại."""
+        # Controller -> View
+        self.frame_decoded.connect(self.remote_widget.update_frame)
+        self.status_updated.connect(self.remote_widget.update_status_text)
+        self.info_updated.connect(self.remote_widget.update_info_text)
+        self.error_occurred.connect(self.remote_widget.show_error)
+        self.toggle_fullscreen.connect(self.remote_widget.toggle_fullscreen_ui)
+
+        # View -> Controller
+        self.remote_widget.disconnect_requested.connect(self.handle_disconnect_request)
+        self.remote_widget.fit_to_screen_requested.connect(self.fit_to_screen)
+        self.remote_widget.actual_size_requested.connect(self.actual_size)
+        self.remote_widget.fullscreen_requested.connect(self.toggle_fullscreen.emit)
+
+    def handle_video_config_received(
+        self, width: int, height: int, fps: int, codec: str
+    ):
+        """Xử lý thông tin config video từ ReceiveHandler."""
         try:
-            logger.info(
+            logger.debug(
                 f"Received config for session {self.session_id}: "
-                f"{packet.width}x{packet.height}@{packet.fps}fps, "
-                f"extradata: {len(packet.extradata) if packet.extradata else 0} bytes"
+                f"{width}x{height}@{fps}fps"
             )
+            self.original_width = width
+            self.original_height = height
 
-            # Forward to widget to initialize decoder
-            self.remote_widget.handle_video_config_packet(packet)
-
-            self.update_status.emit(
-                f"Streaming: {packet.width}x{packet.height}@{packet.fps}fps"
+            info_text = (
+                f"Resolution: {width}x{height} | "
+                f"FPS: {fps} | Codec: {codec.upper()}"
             )
+            self.info_updated.emit(info_text)
+            self.status_updated.emit("🎥 Streaming")
 
         except Exception as e:
-            logger.error(f"Error handling config packet: {e}", exc_info=True)
-            self.show_error.emit(f"Config error: {str(e)}")
+            logger.error(f"Error handling config: {e}", exc_info=True)
+            self.error_occurred.emit(f"Config error: {str(e)}")
 
-    def handle_video_stream_packet(self, packet: VideoStreamPacket):
-        """Handle incoming video stream packet."""
+    def handle_decoded_frame(self, pixmap: QPixmap):
+        """Xử lý frame đã được decode từ ReceiveHandler."""
         try:
-            self.remote_widget.handle_video_stream_packet(packet)
-            logger.debug(f"Video packet processed for session {self.session_id}")
-        except Exception as e:
-            logger.error(
-                f"Error handling video packet for session {self.session_id}: {e}"
-            )
-            self.show_error.emit(f"Video processing error: {str(e)}")
+            self.full_screen_pixmap = pixmap
+            # Cập nhật hiển thị
+            self._update_display()
 
-    def send_keyboard_event(self, event_data):
-        """Send keyboard event to remote host."""
-        try:
-            # from client.handlers.controller_handler import ControllerHandler
-            pass
-            # ControllerHandler.send_keyboard_event(self.session_id, event_data)
         except Exception as e:
-            logger.error(f"Error sending keyboard event: {e}")
+            logger.error(f"Error handling decoded frame: {e}", exc_info=True)
+            self.error_occurred.emit(f"Display error: {str(e)}")
 
-    def send_mouse_event(self, event_data):
-        """Send mouse event to remote host."""
-        try:
-            # from client.handlers.controller_handler import ControllerHandler
-            pass
-            # ControllerHandler.send_mouse_event(self.session_id, event_data)
-        except Exception as e:
-            logger.error(f"Error sending mouse event: {e}")
+    def handle_decode_error(self, error_message: str):
+        """Xử lý lỗi decode từ ReceiveHandler."""
+        logger.error(f"Decode error for session {self.session_id}: {error_message}")
+        self.error_occurred.emit(error_message)
 
+    def _update_display(self):
+        """Cập nhật pixmap trên UI theo chế độ hiển thị hiện tại."""
+        if not self.full_screen_pixmap:
+            return
+        if self._is_fitting_screen:
+            self.fit_to_screen()
+        else:
+            self.actual_size()
+
+    @pyqtSlot()
+    def fit_to_screen(self):
+        """Thay đổi kích thước pixmap để vừa với cửa sổ."""
+        self._is_fitting_screen = True
+        if not self.full_screen_pixmap:
+            return
+
+        # Lấy kích thước của scroll_area từ widget
+        scroll_area_size = self.remote_widget.scroll_area.size()
+        scroll_area_size.setWidth(scroll_area_size.width() - 20)
+        scroll_area_size.setHeight(scroll_area_size.height() - 20)
+
+        scaled_pixmap = self.full_screen_pixmap.scaled(
+            scroll_area_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.frame_decoded.emit(scaled_pixmap)
+
+    @pyqtSlot()
+    def actual_size(self):
+        """Hiển thị pixmap với kích thước gốc."""
+        self._is_fitting_screen = False
+        if not self.full_screen_pixmap:
+            return
+        self.frame_decoded.emit(self.full_screen_pixmap)
+
+    @pyqtSlot(str)
     def handle_disconnect_request(self, session_id: str):
-        """Handle disconnect request from widget."""
+        """Xử lý yêu cầu ngắt kết nối từ widget."""
         if session_id == self.session_id:
             logger.info(f"Disconnect requested for session: {session_id}")
-            self.disconnect_session()
+            from client.managers.session_manager import SessionManager
 
-    def disconnect_session(self):
-        """Disconnect this session."""
-        try:
-            # from client.handlers.controller_handler import ControllerHandler
+            SessionManager.remove_session(self.session_id)
 
-            # ControllerHandler.disconnect_session(self.session_id)
-
-            if self.remote_widget:
-                self.remote_widget.close()
-
+            from client.handlers.send_handler import SendHandler
+            SendHandler.send_end_session_packet(session_id)
             self.cleanup()
-        except Exception as e:
-            logger.error(f"Error disconnecting session {self.session_id}: {e}")
+            
 
     def start(self):
-        """Start controller."""
         if self._running:
             return
         self._running = True
-        logger.info(f"RemoteWidgetController started for session: {self.session_id}")
+        logger.debug(f"RemoteWidgetController started for session: {self.session_id}")
 
     def stop(self):
-        """Stop controller."""
         if not self._running:
             return
         self._running = False
         logger.info(f"RemoteWidgetController stopped for session: {self.session_id}")
 
     def cleanup(self):
-        """Clean up resources."""
-        try:
-            self.stop()
-            # from client.handlers.controller_handler import ControllerHandler
+        """Dọn dẹp tài nguyên của controller."""
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
 
-            # ControllerHandler.unregister_session_handler(self.session_id)
+        try:
+            self.stop()   
             logger.info(f"RemoteWidgetController cleanup completed: {self.session_id}")
         except Exception as e:
-            logger.error(f"Error during controller cleanup: {e}")
-
-    def _update_status_ui(self, message: str):
-        """Update status in widget."""
-        if hasattr(self.remote_widget, "status_label"):
-            self.remote_widget.status_label.setText(message)
-
-    def _show_error_ui(self, message: str):
-        """Show error in widget."""
-        if self.remote_widget:
-            self.remote_widget.show_error(message)
+            logger.error(f"Error during controller cleanup: {e}", exc_info=True)

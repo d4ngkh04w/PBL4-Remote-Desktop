@@ -4,7 +4,8 @@ from common.packets import (
     AuthenticationPasswordPacket,
     ConnectionRequestPacket,
     SessionPacket,
-    Packet,
+    VideoConfigPacket,
+    VideoStreamPacket,   
 )
 from common.enums import Status
 from client.managers.client_manager import ClientManager
@@ -15,29 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class SendHandler:
-
     @classmethod
-    def send_packet(cls, packet: Packet):
-        """Phân loại và xử lý packet nhận được."""
-        packet_handlers = {
-            # AssignIdPacket: cls.__handle_assign_id_packet,
-            # ConnectionResponsePacket: cls.__handle_connection_response_packet,
-            # SessionPacket: cls.__handle_session_packet,
-            # ConnectionRequestPacket: cls.__handle_connection_request_packet,  # Host nhận
-            # VideoConfigPacket: cls.__handle_video_config_packet,
-            # VideoStreamPacket: cls.__handle_video_stream_packet,
-            AuthenticationPasswordPacket: cls.__send_authentication_password_packet,
-            ConnectionRequestPacket: cls.__send_connection_request,
-            SessionPacket: cls.__send_end_session_packet,
-        }
-        handler = packet_handlers.get(type(packet))
-        if handler:
-            handler(packet)
-        else:
-            logger.debug(f"Unhandled packet type: {type(packet)}")
-
-    @classmethod
-    def __send_connection_request(cls, host_id: str, host_pass: str):
+    def send_connection_request_packet(cls, host_id: str, host_pass: str):
         """Gửi ConnectionRequestPacket"""
         connection_request_packet = ConnectionRequestPacket(
             sender_id=ClientManager.get_client_id(),
@@ -47,7 +27,7 @@ class SendHandler:
         SenderService.send_packet(connection_request_packet)
 
     @classmethod
-    def __send_authentication_password_packet(cls, receiver_id: str, status: Status):
+    def send_authentication_password_packet(cls, receiver_id: str, status: Status):
         """Gửi AuthenticationPasswordPacket"""
         auth_packet = AuthenticationPasswordPacket(
             receiver_id=receiver_id,
@@ -56,7 +36,7 @@ class SendHandler:
         SenderService.send_packet(auth_packet)
 
     @classmethod
-    def __send_end_session_packet(cls, session_id: str):
+    def send_end_session_packet(cls, session_id: str):
         """Gửi SessionPacket để kết thúc phiên"""
         end_session_packet = SessionPacket(
             status=Status.SESSION_ENDED,
@@ -64,3 +44,29 @@ class SendHandler:
         )
         SenderService.send_packet(end_session_packet)
         SessionManager.remove_session(session_id)
+
+    @classmethod
+    def send_video_config_packet(cls, session_id: str, width: int, height: int, fps: int, codec: str, extradata: bytes):
+        """Gửi VideoConfigPacket"""        
+        video_config_packet = VideoConfigPacket(
+            session_id=session_id,
+            width=width,
+            height=height,
+            fps=fps,
+            codec=codec,
+            extradata=extradata,
+        )
+        SenderService.send_packet(video_config_packet)
+
+    @classmethod
+    def send_video_stream_packet(cls, session_id: str, frame_data: bytes):
+        """Gửi VideoStreamPacket"""
+        video_stream_packet = VideoStreamPacket(
+            session_id=session_id,
+            video_data=frame_data,            
+        )
+        SenderService.send_packet(video_stream_packet)
+
+    
+
+   
