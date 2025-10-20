@@ -2,6 +2,7 @@ from fractions import Fraction
 from PIL import Image
 import av
 from av.video.frame import PictureType
+from av.codec.context import Flags
 
 
 class H264Encoder:
@@ -10,6 +11,8 @@ class H264Encoder:
     def __init__(self, width, height, fps=30, gop_size=60, bitrate=2_000_000):
         self.gop_size = gop_size
         self.frame_count = 0
+
+        self.extradata = None
 
         self.codec = av.CodecContext.create("libx264", "w")
         self.codec.width = width
@@ -27,9 +30,10 @@ class H264Encoder:
             "profile": "baseline",
             "level": "3.1",  # Đảm bảo tương thích với nhiều thiết bị
             "rc-lookahead": "0",  # Số frame encoder nhìn trước để tối ưu bitrate (0: tắt để giảm độ trễ)
-            "intra-refresh": "1",  # Sử dụng intra refresh thay vì I-frames cứng toàn bộ
+            "intra-refresh": "0",  # Sử dụng intra refresh thay vì I-frames cứng toàn bộ
         }
 
+        self.codec.flags |= Flags.global_header
         self.codec.open()
 
     def encode(self, image: Image.Image) -> bytes | None:
@@ -42,6 +46,10 @@ class H264Encoder:
 
         self.frame_count += 1
         packets = self.codec.encode(frame)
+
+        if self.extradata is None and self.codec.extradata:
+            self.extradata = bytes(self.codec.extradata)
+
         if not packets:
             return None
 
@@ -49,6 +57,8 @@ class H264Encoder:
 
     def get_extradata(self) -> bytes | None:
         """Lấy SPS/PPS headers."""
+        if self.extradata:
+            return self.extradata
         if hasattr(self.codec, "extradata") and self.codec.extradata:
             return bytes(self.codec.extradata)
         return None

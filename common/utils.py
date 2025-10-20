@@ -63,36 +63,47 @@ def capture_frame(
         # Chụp màn hình
         img_bgra = sct_instance.grab(monitor)
 
+        if not img_bgra:
+            return None
+
         # BGRX loại bỏ kênh Alpha không cần thiết
         img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
 
-        if (draw_cursor and mouse_controller) and sys.platform == "win32":
-            # Lấy vị trí chuột toàn cục
-            mouse_x, mouse_y = mouse_controller.position
+        if draw_cursor and mouse_controller and sys.platform == "win32":
+            try:
+                # Lấy vị trí chuột toàn cục
+                mouse_x, mouse_y = mouse_controller.position
 
-            # Tính toán vị trí tương đối của chuột trên màn hình đang được chụp
-            monitor_x, monitor_y = monitor["left"], monitor["top"]
-            relative_x = mouse_x - monitor_x
-            relative_y = mouse_y - monitor_y
+                # Tính toán vị trí tương đối của chuột trên màn hình đang được chụp
+                monitor_x, monitor_y = monitor["left"], monitor["top"]
+                relative_x = mouse_x - monitor_x
+                relative_y = mouse_y - monitor_y
 
-            # Chỉ vẽ nếu con trỏ nằm trong phạm vi của màn hình này
-            if (
-                0 <= relative_x < monitor["width"]
-                and 0 <= relative_y < monitor["height"]
-            ):
-                draw = ImageDraw.Draw(img_pil)
-                radius = 8
-                # Tọa độ để vẽ hình tròn con trỏ
-                ellipse_bbox = (
-                    relative_x - radius,
-                    relative_y - radius,
-                    relative_x + radius,
-                    relative_y + radius,
-                )
-                draw.ellipse(ellipse_bbox, fill=(255, 0, 0), outline=(0, 0, 0))
+                # Chỉ vẽ nếu con trỏ nằm trong phạm vi của màn hình này
+                if (
+                    0 <= relative_x < monitor["width"]
+                    and 0 <= relative_y < monitor["height"]
+                ):
+                    draw = ImageDraw.Draw(img_pil)
+                    radius = 8
+                    # Tọa độ để vẽ hình tròn con trỏ
+                    ellipse_bbox = (
+                        relative_x - radius,
+                        relative_y - radius,
+                        relative_x + radius,
+                        relative_y + radius,
+                    )
+                    draw.ellipse(ellipse_bbox, fill=(255, 0, 0), outline=(0, 0, 0))
+            except Exception as e:
+                # Nếu có lỗi khi vẽ cursor, vẫn trả về ảnh không có cursor
+                pass
 
-            return img_pil
-    except mss.ScreenShotError:
+        return img_pil
+    except mss.ScreenShotError as e:
+        print(f"MSS ScreenShotError: {e}")
+        return None
+    except Exception as e:
+        print(f"Capture frame error: {e}")
         return None
 
 

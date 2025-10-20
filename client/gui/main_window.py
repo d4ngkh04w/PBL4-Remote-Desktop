@@ -1,3 +1,6 @@
+# main_window.py
+import logging
+
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -10,49 +13,54 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QLineEdit,
     QStatusBar,
+    QMessageBox,
+    QApplication,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSlot
 
 from client.controllers.main_window_controller import MainWindowController
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
     """
-    Main window for the client-new application.
+    Cửa sổ chính của ứng dụng (View).
+    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng,
+    và quản lý các cửa sổ con (RemoteWidget).
     """
 
     def __init__(self, config):
         super().__init__()
 
         self.config = config
-
-        # UI components that need to be accessed later
-        self.id_display = None
-        self.password_display = None
-        self.connect_btn = None
-
-        self.host_id_input = None
-        self.host_pass_input = None
-
-        self.tabs: QTabWidget = QTabWidget()
-        self.status_bar = None
-
-        # Track cleanup state
         self._cleanup_done = False
 
-        # Initialize controller for business logic
-        self.controller = MainWindowController(self, config)
+        # Khởi tạo các biến UI
+        self.id_display: QLabel | None = None
+        self.password_display: QLabel | None = None
+        self.connect_btn: QPushButton | None = None
+        self.refresh_btn: QPushButton | None = None
+        self.host_id_input: QLineEdit | None = None
+        self.host_pass_input: QLineEdit | None = None
+        self.tabs: QTabWidget = QTabWidget()
+        self.status_bar: QStatusBar | None = None
 
-        # Start controller after UI is ready
-        self.controller.start()
+        # Khởi tạo Controller (chỉ truyền config, không truyền self)
+        self.controller = MainWindowController(config)
 
         # Setup UI
         self.init_ui()
 
-        self.controller.update_password_display.emit()
+        # Kết nối signals từ Controller đến slots của View
+        self._connect_controller_signals()
+
+        # Bắt đầu controller và yêu cầu dữ liệu ban đầu
+        self.controller.start()
+        self.controller.request_new_password()
 
     def init_ui(self):
-        """Khởi tạo giao diện người dùng"""
+        """Khởi tạo giao diện người dùng, layout và style."""
         self.setWindowTitle("Remote Desktop Client - PBL4")
         self.setGeometry(100, 100, 900, 700)
 
@@ -81,7 +89,7 @@ class MainWindow(QMainWindow):
         # Central widget with tabs
         self.setCentralWidget(self.tabs)
 
-        # Create tabs only after self.tabs is initialized
+        # Create tabs
         self.create_host_tab()
         self.create_controller_tab()
 
@@ -91,15 +99,32 @@ class MainWindow(QMainWindow):
         # Status bar
         self.status_bar = self.statusBar()
         if not self.status_bar:
-            # Create status bar if it doesn't exist
             self.status_bar = QStatusBar()
             self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Initializing...")
 
-        # Connect to server will be done after UI is fully initialized
+    def _connect_controller_signals(self):
+        """Kết nối các signal từ Controller tới các slot cập nhật UI."""
+        self.controller.status_updated.connect(self.update_status_bar)
+        self.controller.id_updated.connect(self.update_id_display)
+        self.controller.password_updated.connect(self.update_password_display)
+        self.controller.tabs_state_changed.connect(self.set_controller_tab_enabled)
+        self.controller.notification_requested.connect(self.show_notification)
+
+        self.controller.connect_button_state_changed.connect(
+            self.update_connect_button_state
+        )
+        self.controller.text_copied_to_clipboard.connect(self.perform_clipboard_copy)
+        self.controller.widget_creation_requested.connect(
+            self.create_remote_widget_in_main_thread
+        )
+
+    # ==========================================
+    # UI Creation Methods (Layout & Style)
+    # ==========================================
 
     def create_host_tab(self):
-        """Tab hiển thị ID của mình"""
+        """Tab hiển thị ID và Password của máy này."""
         host_widget = QWidget()
         layout = QVBoxLayout(host_widget)
         layout.setSpacing(20)
@@ -189,14 +214,8 @@ class MainWindow(QMainWindow):
         pass_layout.addWidget(self.password_display)
         layout.addWidget(pass_group)
 
-        # Action buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
-
-        self.refresh_btn = QPushButton("🔄 Refresh Password")
-        self.refresh_btn.setMinimumHeight(40)
-        self.refresh_btn.setStyleSheet(
-            """
+        # Action buttons styles
+        btn_style = """
             QPushButton {
                 background-color: #007bff;
                 color: white;
@@ -212,18 +231,27 @@ class MainWindow(QMainWindow):
                 background-color: #004085;
             }
         """
-        )
-        self.refresh_btn.clicked.connect(self.controller.update_password_display)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self.refresh_btn = QPushButton("🔄 Refresh Password")
+        self.refresh_btn.setMinimumHeight(40)
+        self.refresh_btn.setStyleSheet(btn_style)
+        # Kết nối tới phương thức yêu cầu của controller
+        self.refresh_btn.clicked.connect(self.controller.request_new_password)
 
         copy_id_btn = QPushButton("📋 Copy ID")
         copy_id_btn.setMinimumHeight(40)
-        copy_id_btn.setStyleSheet(self.refresh_btn.styleSheet())
-        copy_id_btn.clicked.connect(self.controller.copy_id_to_clipboard)
+        copy_id_btn.setStyleSheet(btn_style)
+        # Kết nối tới phương thức yêu cầu của controller
+        copy_id_btn.clicked.connect(self.controller.request_copy_id)
 
         copy_pass_btn = QPushButton("📋 Copy Password")
         copy_pass_btn.setMinimumHeight(40)
-        copy_pass_btn.setStyleSheet(self.refresh_btn.styleSheet())
-        copy_pass_btn.clicked.connect(self.controller.copy_password_to_clipboard)
+        copy_pass_btn.setStyleSheet(btn_style)
+        # Kết nối tới phương thức yêu cầu của controller
+        copy_pass_btn.clicked.connect(self.controller.request_copy_password)
 
         btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(copy_id_btn)
@@ -234,7 +262,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(host_widget, "🏠 Your ID")
 
     def create_controller_tab(self):
-        """Tab kết nối đến partner"""
+        """Tab để nhập ID/Pass và kết nối đến máy khác."""
         controller_widget = QWidget()
         layout = QVBoxLayout(controller_widget)
         layout.setSpacing(20)
@@ -267,12 +295,8 @@ class MainWindow(QMainWindow):
         connect_layout = QFormLayout(connect_group)
         connect_layout.setSpacing(15)
 
-        # Partner ID Input
-        self.host_id_input = QLineEdit()
-        self.host_id_input.setPlaceholderText("Enter 9-digit Partner ID")
-        self.host_id_input.setMaxLength(9)
-        self.host_id_input.setStyleSheet(
-            """
+        # Input styles
+        input_style = """
             QLineEdit {
                 padding: 10px;
                 border: 2px solid #ced4da;
@@ -283,14 +307,19 @@ class MainWindow(QMainWindow):
                 border-color: #0066cc;
             }
         """
-        )
+
+        # Partner ID Input
+        self.host_id_input = QLineEdit()
+        self.host_id_input.setPlaceholderText("Enter 9-digit Partner ID")
+        self.host_id_input.setMaxLength(9)
+        self.host_id_input.setStyleSheet(input_style)
         connect_layout.addRow("Partner ID:", self.host_id_input)
 
         # Password Input
         self.host_pass_input = QLineEdit()
         self.host_pass_input.setPlaceholderText("Enter Password")
         self.host_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.host_pass_input.setStyleSheet(self.host_id_input.styleSheet())
+        self.host_pass_input.setStyleSheet(input_style)
         connect_layout.addRow("Password:", self.host_pass_input)
 
         layout.addWidget(connect_group)
@@ -320,6 +349,7 @@ class MainWindow(QMainWindow):
             }
         """
         )
+        # Kết nối tới handler cục bộ để lấy dữ liệu input
         self.connect_btn.clicked.connect(self.handle_connect_click)
         layout.addWidget(self.connect_btn)
 
@@ -327,32 +357,133 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(controller_widget, "🎮 Control Host")
 
+    # ==========================================
+    # User Interaction Handlers (View -> Controller)
+    # ==========================================
+
     def handle_connect_click(self):
-        """Handle connect button click"""
-        if self.host_id_input is not None and self.host_pass_input is not None:
+        """Lấy dữ liệu từ input và gửi yêu cầu kết nối tới Controller."""
+        if self.host_id_input and self.host_pass_input:
             host_id = self.host_id_input.text().strip()
             host_pass = self.host_pass_input.text().strip()
+            # Controller sẽ lo việc validate và gửi packet
             self.controller.connect_to_partner(host_id, host_pass)
         else:
-            if self.status_bar is not None:
-                self.status_bar.showMessage("Input fields are not ready.", 5000)
+            self.show_notification("Input fields are not initialized.", "error")
+
+    # ==========================================
+    # UI Update Slots (Controller -> View)
+    # ==========================================
+
+    @pyqtSlot(str)
+    def update_status_bar(self, message: str):
+        """Cập nhật thanh trạng thái."""
+        if self.status_bar:
+            self.status_bar.showMessage(message, 5000)
+
+    @pyqtSlot(str)
+    def update_id_display(self, client_id: str):
+        """Cập nhật label hiển thị ID."""
+        if self.id_display:
+            self.id_display.setText(client_id)
+
+    @pyqtSlot(str)
+    def update_password_display(self, password: str):
+        """Cập nhật label hiển thị mật khẩu."""
+        if self.password_display:
+            self.password_display.setText(password)
+
+    @pyqtSlot(bool)
+    def set_controller_tab_enabled(self, enabled: bool):
+        """Bật/tắt tab điều khiển."""
+        self.tabs.setTabEnabled(1, enabled)
+
+    @pyqtSlot(bool, str)
+    def update_connect_button_state(self, enabled: bool, text: str):
+        """Cập nhật trạng thái và text của nút Connect."""
+        if self.connect_btn:
+            self.connect_btn.setEnabled(enabled)
+            self.connect_btn.setText(text)
+
+    @pyqtSlot(str, str)
+    def show_notification(self, message: str, notif_type: str):
+        """Hiển thị hộp thoại thông báo (Info, Warning, Error)."""
+        title = notif_type.capitalize()
+        if notif_type == "error":
+            QMessageBox.critical(self, title, message)
+        elif notif_type == "warning":
+            QMessageBox.warning(self, title, message)
+        else:
+            QMessageBox.information(self, title, message)
+
+    @pyqtSlot(str, str)
+    def perform_clipboard_copy(self, type_label: str, content: str):
+        """Thực hiện copy nội dung vào clipboard hệ thống (UI task)."""
+        if content:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(content)
+                self.update_status_bar(f"{type_label} copied to clipboard!")
+
+    @pyqtSlot(str)
+    def create_remote_widget_in_main_thread(self, session_id: str):
+        """Tạo remote widget trong main thread để tránh thread conflicts."""
+        try:
+            from client.gui.remote_widget import RemoteWidget
+            from client.managers.session_manager import SessionManager
+
+            # Tạo widget trong main thread
+            remote_widget = RemoteWidget(session_id)
+
+            # Đăng ký widget với SessionManager
+            if SessionManager.session_exists(session_id):
+                SessionManager._sessions[session_id].widget = remote_widget
+
+                # Cập nhật connect button state
+                self.controller.connect_button_state_changed.emit(
+                    True, "🔗 Connect to Partner"
+                )
+
+                # Hiển thị widget
+                remote_widget.show()
+                remote_widget.raise_()
+                remote_widget.activateWindow()
+
+                logger.debug(f"Remote widget created in main thread: {session_id}")
+                self.update_status_bar(f"Remote session started: {session_id}")
+            else:
+                logger.error(f"Session {session_id} not found when creating widget")
+
+        except Exception as e:
+            logger.error(
+                f"Error creating remote widget in main thread: {e}", exc_info=True
+            )
+            self.show_notification(f"Error creating remote window: {e}", "error")
+
+    # ==========================================
+    # Cleanup & Lifecycle
+    # ==========================================
 
     def closeEvent(self, event):
-        """Handle window close event"""
+        """Xử lý sự kiện đóng cửa sổ chính."""
         if not self._cleanup_done:
             self.cleanup()
         event.accept()
 
     def cleanup(self):
-        """Clean up resources when closing"""
+        """Dọn dẹp tài nguyên khi ứng dụng đóng."""
         if self._cleanup_done:
             return
 
-        try:
-            self._cleanup_done = True
+        logger.info("Cleaning up MainWindow...")
+        self._cleanup_done = True
 
+        try:
+            # Dọn dẹp controller
             if self.controller:
                 self.controller.cleanup()
 
+            logger.info("MainWindow cleanup completed.")
+
         except Exception as e:
-            print(f"Error during cleanup: {e}")
+            logger.error(f"Error during MainWindow cleanup: {e}", exc_info=True)

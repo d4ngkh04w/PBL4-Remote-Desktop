@@ -163,13 +163,14 @@ class RelayHandler:
                 host_id=sender_id,
                 timeout=Config.session_timeout,
             )
-            session_packet = SessionPacket(
-                status=Status.SESSION_STARTED, session_id=session_id
+            host_session_packet = SessionPacket(
+                status=Status.SESSION_STARTED, session_id=session_id, role="host"
             )
-            session_packet.role = "HOST"
-            sender_queue.put(session_packet)
-            session_packet.role = "CONTROLLER"
-            receiver_queue.put(session_packet)
+            controller_session_packet = SessionPacket(
+                status=Status.SESSION_STARTED, session_id=session_id, role="controller"
+            )
+            sender_queue.put(host_session_packet)
+            receiver_queue.put(controller_session_packet)
         else:
             receiver_queue.put(packet)
 
@@ -231,7 +232,7 @@ class RelayHandler:
         receiver_queue = ClientManager.get_client_queue(str(receiver_id))
         sender_queue = ClientManager.get_client_queue(sender_id)
         response = SessionPacket(
-            status=Status.SESSION_ENDED, session_id=str(session["session_id"])
+            status=Status.SESSION_ENDED, session_id=packet.session_id
         )
 
         if not SessionManager.is_client_in_session(
@@ -259,50 +260,3 @@ class RelayHandler:
                 )
         else:
             logger.warning(f"Receiver {receiver_id} not found. Dropping packet")
-
-    # @staticmethod
-    # def __relay_stream_packet(
-    #     packet: ImagePacket | FrameUpdatePacket | MousePacket,
-    #     sender_id: str,
-    # ):
-    #     """Chuyển tiếp các gói tin stream"""
-
-    #     session_id, session_info = SessionManager.get_client_session(sender_id)
-    #     if not session_info or not session_id:
-    #         logger.warning(f"Session not found for sender {sender_id}. Dropping packet")
-    #         return
-
-    #     receiver_id = (
-    #         session_info["controller_id"]
-    #         if session_info["host_id"] == sender_id
-    #         else session_info["host_id"]
-    #     )
-
-    #     receiver_queue = ClientManager.get_client_queue(str(receiver_id))
-    #     sender_queue = ClientManager.get_client_queue(sender_id)
-
-    #     response = SessionPacket(status=Status.SESSION_ENDED, session_id=session_id)
-
-    #     if not SessionManager.is_client_in_session(
-    #         sender_id, session_id
-    #     ) or not SessionManager.is_client_in_session(str(receiver_id), session_id):
-    #         logger.warning(
-    #             f"One of the clients is no longer in session, ending session {session_id}"
-    #         )
-    #         SessionManager.end_session(session_id)
-    #         if sender_queue:
-    #             sender_queue.put(response)
-    #         if receiver_queue:
-    #             receiver_queue.put(response)
-
-    #         return
-
-    #     if receiver_queue:
-    #         try:
-    #             receiver_queue.put_nowait(packet)
-    #         except queue.Full:
-    #             logger.warning(
-    #                 f"Receiver {receiver_id}'s send queue is full. Dropping packet"
-    #             )
-    #     else:
-    #         logger.warning(f"Receiver {receiver_id} not found. Dropping packet")

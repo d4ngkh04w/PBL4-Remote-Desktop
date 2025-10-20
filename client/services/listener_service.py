@@ -19,20 +19,20 @@ class ListenerService:
         cls._socket = sock
         cls._shutdown_event.clear()
         cls._receiving_thread = threading.Thread(
-            target=cls._receive_worker, daemon=True
+            target=cls.__receive_worker, daemon=True
         )
         cls._receiving_thread.start()
         logger.info("ListenerService initialized and receiving thread started")
 
     @classmethod
-    def _receive_worker(cls):
+    def __receive_worker(cls):
         """Worker thread để nhận dữ liệu từ socket."""
         while not cls._shutdown_event.is_set():
             if cls._socket:
                 try:
                     packet = Protocol.receive_packet(cls._socket)
                     if packet:
-                        cls._process_packet(packet)
+                        cls.__process_packet(packet)
                 except socket.timeout:
                     continue
                 except Exception as e:
@@ -47,8 +47,7 @@ class ListenerService:
         cls._socket = None
 
     @classmethod
-    def _process_packet(cls, packet: Packet):
+    def __process_packet(cls, packet: Packet):
         """Xử lý gói tin nhận được."""
         from client.handlers.receive_handler import ReceiveHandler
-
         ReceiveHandler.handle_packet(packet)

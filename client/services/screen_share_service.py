@@ -9,16 +9,35 @@ from common.packets import VideoStreamPacket, VideoConfigPacket
 from common.h264 import H264Encoder
 from common.utils import capture_frame
 from client.services.sender_service import SenderService
+from client.handlers.send_handler import SendHandler
 
 logger = logging.getLogger(__name__)
 
+# DEPRECATED: Use CentralizedScreenShareService instead
+# This class is kept for backwards compatibility only
+
 
 class ScreenShareService:
-    """Screen streaming service với H.264 encoding."""
+    """
+    ⚠️  DEPRECATED: Individual screen streaming service với H.264 encoding.
+
+    🚀 USE INSTEAD: CentralizedScreenShareService for better performance!
+
+    This service creates individual capture/encode/send pipeline per session.
+    Not recommended for multiple sessions due to:
+    - High CPU usage (N times capture + encode)
+    - High memory usage (N encoder instances)
+    - Inefficient resource utilization
+    """
 
     def __init__(
         self, session_id: str, monitor_number=1, fps=30, gop_size=60, bitrate=2_000_000
     ):
+        logger.warning(
+            f"⚠️  ScreenShareService is DEPRECATED for session {session_id}. "
+            f"Consider using CentralizedScreenShareService for better performance!"
+        )
+
         self._session_id = session_id
         self._monitor_number = monitor_number
         self._fps = fps
@@ -56,8 +75,10 @@ class ScreenShareService:
         """Thread worker: capture → encode → send."""
         encoder = None
         frame_delay = 1.0 / self._fps
+        config_sent = False
+        frame_count = 0  # Đếm frame để debug
 
-        with mss.mss() as sct:
+        with mss.mss(with_cursor=True) as sct:
             try:
                 # Lấy monitor info
                 monitor = sct.monitors[self._monitor_number]
@@ -72,49 +93,49 @@ class ScreenShareService:
                     bitrate=self._bitrate,
                 )
 
-                # Encode frame đầu để lấy extradata
-                init_img = capture_frame(
-                    sct_instance=sct,
-                    monitor=monitor,
-                    mouse_controller=self._mouse_controller,
-                    draw_cursor=True,
-                )
-
-                if init_img:
-                    encoder.encode(init_img)
-                    extradata = encoder.get_extradata()
-
-                    # Gửi config packet trước
-                    if extradata:
-                        config = VideoConfigPacket(
-                            session_id=self._session_id,
-                            width=width,
-                            height=height,
-                            fps=self._fps,
-                            codec="h264",
-                            extradata=extradata,
-                        )
-                        SenderService.send_packet(config)
-
-                # Main loop
                 while self._is_running.is_set():
                     loop_start = time.perf_counter()
 
-                    img = capture_frame(sct, monitor)
+                    # Encode frame đầu để lấy extradata
+                    img = capture_frame(
+                        sct_instance=sct,
+                        monitor=monitor,
+                        mouse_controller=self._mouse_controller,
+                        draw_cursor=True,
+                    )
+
                     if not img:
                         time.sleep(frame_delay)
                         continue
 
-                    # Encode
                     video_data = encoder.encode(img)
+
+                    if not config_sent:
+                        extradata = encoder.get_extradata()
+                        if extradata:
+                            SendHandler.send_video_config_packet(
+                                session_id=self._session_id,
+                                width=width,
+                                height=height,
+                                fps=self._fps,
+                                codec="h264",
+                                extradata=extradata,
+                            )
+
+                            config_sent = True
+                            logger.info("VideoConfigPacket sent successfully")
+                        else:
+                            logger.debug("Extradata not available yet, continuing...")
+                            # Vẫn gửi video data nếu có
+
                     if video_data:
-                        packet = VideoStreamPacket(
-                            session_id=self._session_id, video_data=video_data
+                        SendHandler.send_video_stream_packet(
+                            session_id=self._session_id,
+                            frame_data=video_data,
                         )
-                        SenderService.send_packet(packet)
+                        frame_count += 1
 
                     loop_time = time.perf_counter() - loop_start
-
                     sleep_time = frame_delay - loop_time
                     if sleep_time > 0:
                         time.sleep(sleep_time)

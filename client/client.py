@@ -54,25 +54,7 @@ class RemoteDesktopClient:
         except Exception as e:
             logger.error(f"Failed to create main window - {e}")
             return False
-
-    # def __create_connection_manager(self):
-    #     """
-    #     Tạo ConnectionManager để quản lý kết nối đến server.
-    #     """
-    #     try:
-    #         self.connection_manager = ConnectionManager(
-    #             self.config["server_host"],
-    #             self.config["server_port"],
-    #             self.config["use_ssl"],
-    #             self.config["cert_file"],
-    #         )
-    #         logger.info("Connection manager created successfully.")
-    #         self.connection_manager.connect()
-    #         return True
-    #     except Exception as e:
-    #         logger.error(f"Failed to create connection manager - {e}")
-    #         return False
-
+        
     def __connect_to_server(self):
         """Kết nối đến server."""
         try:
@@ -143,7 +125,7 @@ class RemoteDesktopClient:
             # Hiển thị cửa sổ chính
             if self.main_window:
                 self.main_window.show()
-                logger.info("Main window displayed successfully.")
+                logger.debug("Main window displayed successfully.")
             else:
                 logger.error("Main window is None, cannot display")
                 return -1
