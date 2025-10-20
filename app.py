@@ -1,4 +1,9 @@
 import sys
+
+if sys.version_info < (3, 10):
+    print("Python 3.10 or higher is required")
+    sys.exit(1)
+
 import threading
 
 from common.logger import setup_logger
@@ -10,6 +15,7 @@ from common.config import Config
 args = parse_args()
 Config.save(args)
 logger = setup_logger(is_client=Config.client, debug=Config.debug)
+
 
 banner = r"""
     ____                       __          ____            __   __            

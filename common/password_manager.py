@@ -1,7 +1,7 @@
 import secrets
 import string
 
-import bcrypt
+import keyring
 
 
 class PasswordManager:
@@ -25,20 +25,22 @@ class PasswordManager:
         return password
 
     @staticmethod
-    def hash_password(password: str) -> str:
+    def store_password(device_id: str, password: str):
         """
-        Hash mật khẩu bằng bcrypt.
+        Lưu trữ mật khẩu
         """
-        password_bytes = password.encode()
-        salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(password_bytes, salt)
-        return hashed.decode()  # chuyển về string để lưu trữ
+        keyring.set_password("RemoteDesktopApp", device_id, password)
 
     @staticmethod
-    def verify_password(password: str, hashed: str) -> bool:
+    def get_stored_password(device_id: str) -> str | None:
         """
-        Xác thực mật khẩu so với hash đã lưu.
+        Lấy mật khẩu đã lưu
         """
-        password_bytes = password.encode()
-        hashed_bytes = hashed.encode()
-        return bcrypt.checkpw(password_bytes, hashed_bytes)
+        return keyring.get_password("RemoteDesktopApp", device_id)
+
+    @staticmethod
+    def delete_stored_password(device_id: str):
+        """
+        Xóa mật khẩu đã lưu
+        """
+        keyring.delete_password("RemoteDesktopApp", device_id)

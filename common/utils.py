@@ -1,12 +1,14 @@
 import secrets
-from PIL import Image
-import psutil
 import sys
 import socket
+import subprocess
+import uuid
 
 import mss
 from mss.base import MSSBase
 from pynput.mouse import Controller
+import psutil
+from PIL import Image
 
 if sys.platform == "win32":
     from PIL import ImageDraw
@@ -64,7 +66,7 @@ def capture_frame(
         # BGRX loại bỏ kênh Alpha không cần thiết
         img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
 
-        if draw_cursor and mouse_controller:
+        if (draw_cursor and mouse_controller) and sys.platform == "win32":
             # Lấy vị trí chuột toàn cục
             mouse_x, mouse_y = mouse_controller.position
 
@@ -97,6 +99,32 @@ def capture_frame(
 def get_hostname() -> str:
     """Lấy tên máy tính"""
     return socket.gethostname()
+
+
+def get_hardware_id() -> str:
+    """Lấy hardware ID"""
+    if sys.platform == "win32":
+        cmd = ["wmic", "csproduct", "get", "uuid"]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            lines = result.splitlines()
+            for line in lines:
+                line = line.strip()
+                if line and line.lower() != "uuid":
+                    return line
+        except subprocess.CalledProcessError:
+            return str(uuid.getnode())
+
+    elif sys.platform == "linux":
+        try:
+            with open("/etc/machine-id", "r") as f:
+                return f.read().strip()
+        except IOError:
+            return str(uuid.getnode())
+
+    return str(uuid.getnode())
 
 
 def get_resource_usage():

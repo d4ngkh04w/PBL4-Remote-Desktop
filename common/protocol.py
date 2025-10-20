@@ -12,11 +12,11 @@ from common.safe_deserializer import SafeDeserializer
 
 
 class Protocol:
-    _HEADER_FORMAT = "!IH"
-    _HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
+    __HEADER_FORMAT = "!IH"
+    __HEADER_SIZE = struct.calcsize(__HEADER_FORMAT)
 
     @staticmethod
-    def _receive(sock: Union[socket.socket, ssl.SSLSocket], size: int) -> bytes:
+    def __receive(sock: Union[socket.socket, ssl.SSLSocket], size: int) -> bytes:
         """
         Nhận dữ liệu từ socket
         """
@@ -44,7 +44,7 @@ class Protocol:
         payload = lz4.compress(payload)
 
         length = len(payload)
-        header = struct.pack(cls._HEADER_FORMAT, length, packet.packet_type.value)
+        header = struct.pack(cls.__HEADER_FORMAT, length, packet.packet_type.value)
         socket.sendall(header + payload)
 
     @classmethod
@@ -54,9 +54,9 @@ class Protocol:
 
         :param socket: Socket nhận gói tin
         """
-        header = cls._receive(socket, cls._HEADER_SIZE)
+        header = cls.__receive(socket, cls.__HEADER_SIZE)
 
-        length, packet_type = struct.unpack(cls._HEADER_FORMAT, header)
+        length, packet_type = struct.unpack(cls.__HEADER_FORMAT, header)
 
         if length < 0:
             raise ValueError("Invalid packet length")
@@ -66,7 +66,7 @@ class Protocol:
         if packet_type not in valid_packet_types:
             raise ValueError(f"Invalid packet type: {packet_type}")
 
-        payload_from_socket = cls._receive(socket, length)
+        payload_from_socket = cls.__receive(socket, length)
         if len(payload_from_socket) == 0:
             raise ValueError("No compressed payload data")
 
