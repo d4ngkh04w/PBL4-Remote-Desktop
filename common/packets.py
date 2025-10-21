@@ -87,45 +87,6 @@ class SessionPacket(BasePacket):
         return f"SessionPacket(type={self.packet_type}, status={self.status}), session_id={self.session_id})"
 
 
-# class ImagePacket(BasePacket):
-#     """
-#     Gói tin chứa toàn bộ màn hình (dùng cho lần gửi đầu tiên)
-#     """
-
-#     def __init__(
-#         self,
-#         image_data: bytes,
-#         original_width: int = 0,
-#         original_height: int = 0,
-#     ):
-#         super().__init__(PacketType.IMAGE)
-#         self.image_data = image_data
-#         # Kích thước gốc trước khi resize
-#         self.original_width = original_width
-#         self.original_height = original_height
-
-#     def __repr__(self):
-#         return f"ImagePacket(type={self.packet_type}, size={len(self.image_data)}, original={self.original_width}x{self.original_height})"
-
-
-# class FrameUpdatePacket(BasePacket):
-#     """
-#     Gói tin chứa tất cả các chunk đã thay đổi của một khung hình
-#     """
-
-#     def __init__(self, chunks: list):
-#         super().__init__(PacketType.FRAME_UPDATE)
-
-#         # chunks là một danh sách các tuple chứa thông tin của mỗi chunk.
-#         # Cấu trúc tuple: (x, y, width, height, image_data_compressed)
-#         self.chunks = chunks
-
-#     def __repr__(self):
-#         return (
-#             f"FrameUpdatePacket(type={self.packet_type}, num_chunks={len(self.chunks)})"
-#         )
-
-
 class VideoStreamPacket(BasePacket):
     """
     Gói tin chứa luồng video
@@ -133,7 +94,7 @@ class VideoStreamPacket(BasePacket):
 
     def __init__(
         self,
-        session_id: str,
+        session_id: str | None,
         video_data: bytes,
     ):
         super().__init__(PacketType.VIDEO_STREAM)
@@ -219,8 +180,6 @@ Packet = Union[
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
-    # ImagePacket,
-    # FrameUpdatePacket,
     KeyboardPacket,
     MousePacket,
     AuthenticationPasswordPacket,

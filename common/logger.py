@@ -1,6 +1,7 @@
 import logging
 import sys
 import pathlib
+import time
 
 from colorama import Fore, Style, Back, init
 
@@ -52,7 +53,11 @@ def setup_logger(is_client: bool = False, debug: bool = False, log_dir: str = "l
     """
     Thiết lập và cấu hình logger
     """
-    log_file = f"{log_dir}/client.log" if is_client else f"{log_dir}/server.log"
+    log_file = (
+        f"{log_dir}/client_{time.strftime('%Y-%m-%d')}.log"
+        if is_client
+        else f"{log_dir}/server_{time.strftime('%Y-%m-%d')}.log"
+    )
 
     pathlib.Path(log_file).parent.mkdir(parents=True, exist_ok=True)
 

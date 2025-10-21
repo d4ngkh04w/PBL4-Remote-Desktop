@@ -53,7 +53,8 @@ class SafeDeserializer:
         if not hasattr(packet, "packet_type"):
             raise ValueError("Deserialized object is missing packet_type attribute")
 
-        if not isinstance(packet, (Packet, PacketType)):
+        valid_types = tuple(cls.ALLOWED_CLASSES.values())
+        if not isinstance(packet, valid_types):
             raise ValueError(
                 f"Deserialized object is not a valid packet type: {type(packet)}"
             )

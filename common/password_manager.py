@@ -18,7 +18,7 @@ class PasswordManager:
         """
         characters = ""
         if ascii:
-            characters += string.ascii_letters
+            characters += string.ascii_lowercase
         if digits:
             characters += string.digits
         password = "".join(secrets.choice(characters) for _ in range(length))

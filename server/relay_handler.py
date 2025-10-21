@@ -1,7 +1,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import queue
-from typing import Dict, Callable
+from typing import Callable
 import socket
 import ssl
 import os
@@ -12,8 +12,6 @@ from common.packets import (
     Packet,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
-    # ImagePacket,
-    # FrameUpdatePacket,
     MousePacket,
     KeyboardPacket,
     AuthenticationPasswordPacket,
@@ -31,11 +29,15 @@ logger = logging.getLogger(__name__)
 
 
 class RelayHandler:
-    __thread_pool = ThreadPoolExecutor(
-        max_workers=min((os.cpu_count() or 4) * 4, 30),
-        thread_name_prefix="RelayHandler",
+    __stream_pool = ThreadPoolExecutor(
+        max_workers=min((os.cpu_count() or 4) * 20, 200),
+        thread_name_prefix="StreamRelay",
     )
-    __packet_handlers: Dict[type, Callable] = {}
+    __control_pool = ThreadPoolExecutor(
+        max_workers=min((os.cpu_count() or 4) * 4, 30),
+        thread_name_prefix="ControlRelay",
+    )
+    __packet_handlers: dict[type, Callable] = {}
     __shutdown_event = threading.Event()
 
     @staticmethod
@@ -45,10 +47,17 @@ class RelayHandler:
             if RelayHandler.__shutdown_event.is_set():
                 logger.warning("Server is shutting down. Dropping packet.")
                 return
-
-            RelayHandler.__thread_pool.submit(
-                RelayHandler.__process_packet, packet, sender_socket
-            )
+            if isinstance(
+                packet,
+                (VideoStreamPacket, VideoConfigPacket, MousePacket, KeyboardPacket),
+            ):
+                RelayHandler.__stream_pool.submit(
+                    RelayHandler.__process_packet, packet, sender_socket
+                )
+            else:
+                RelayHandler.__control_pool.submit(
+                    RelayHandler.__process_packet, packet, sender_socket
+                )
         except RuntimeError as e:
             if RelayHandler.__shutdown_event.is_set():
                 logger.warning("Packet submitted during shutdown. Dropping.")
@@ -63,7 +72,8 @@ class RelayHandler:
 
         cls.__shutdown_event.set()
         try:
-            cls.__thread_pool.shutdown(wait=True)
+            cls.__stream_pool.shutdown(wait=True)
+            cls.__control_pool.shutdown(wait=True)
             logger.info("RelayHandler shutdown completed")
         except Exception as e:
             logger.error(f"Error during RelayHandler shutdown: {e}")
@@ -75,15 +85,11 @@ class RelayHandler:
             cls.__packet_handlers = {
                 ConnectionRequestPacket: cls.__relay_request_connection,
                 AuthenticationPasswordPacket: cls.__handle_authentication_password,
-                # ImagePacket: cls.__relay_stream_packet,
-                # FrameUpdatePacket: cls.__relay_stream_packet,
-                # MousePacket: cls.__relay_stream_packet,
-                # KeyboardPacket: cls.__relay_stream_packet,
                 SessionPacket: cls.__handle_session_packet,
-                MousePacket: cls.__relay_stream_packet,
-                KeyboardPacket: cls.__relay_stream_packet,
                 VideoStreamPacket: cls.__relay_stream_packet,
                 VideoConfigPacket: cls.__relay_stream_packet,
+                MousePacket: cls.__relay_stream_packet,
+                KeyboardPacket: cls.__relay_stream_packet,
             }
 
     @staticmethod
@@ -212,51 +218,57 @@ class RelayHandler:
     ):
         """Chuyển tiếp các gói tin stream"""
 
-        session = SessionManager.get_all_sessions(sender_id)
-        if not session:
-            logger.warning(f"Session not found for sender {sender_id}. Dropping packet")
-            return
+        def __send_to_receiver(receiver_id: str, pkt):
+            receiver_queue = ClientManager.get_client_queue(str(receiver_id))
+            if not receiver_queue:
+                logger.warning(f"Receiver {receiver_id} not found. Dropping packet.")
+                return False
 
-        if packet.session_id not in session:
-            logger.warning(
-                f"Packet session_id {packet.session_id} not in sender's active sessions. Dropping packet"
-            )
-            return
-
-        receiver_id = (
-            session[packet.session_id]["controller_id"]
-            if session[packet.session_id]["host_id"] == sender_id
-            else session[packet.session_id]["host_id"]
-        )
-
-        receiver_queue = ClientManager.get_client_queue(str(receiver_id))
-        sender_queue = ClientManager.get_client_queue(sender_id)
-        response = SessionPacket(
-            status=Status.SESSION_ENDED, session_id=packet.session_id
-        )
-
-        if not SessionManager.is_client_in_session(
-            sender_id, packet.session_id
-        ) or not SessionManager.is_client_in_session(
-            str(receiver_id), packet.session_id
-        ):
-            logger.warning(
-                f"One of the clients is no longer in session, ending session {packet.session_id}"
-            )
-            SessionManager.end_session(packet.session_id)
-            if sender_queue:
-                sender_queue.put(response)
-            if receiver_queue:
-                receiver_queue.put(response)
-
-            return
-
-        if receiver_queue:
             try:
-                receiver_queue.put_nowait(packet)
+                if isinstance(pkt, VideoStreamPacket):
+                    receiver_queue.put(pkt, block=False)
+                else:
+                    receiver_queue.put_nowait(pkt)
             except queue.Full:
                 logger.warning(
                     f"Receiver {receiver_id}'s send queue is full. Dropping packet"
                 )
-        else:
-            logger.warning(f"Receiver {receiver_id} not found. Dropping packet")
+
+        if packet.session_id is not None:
+            session_info = SessionManager.get_session(packet.session_id)
+            if not session_info:
+                logger.warning(
+                    f"Session {packet.session_id} not found. Dropping packet."
+                )
+                return
+
+            receiver_id = (
+                session_info["controller_id"]
+                if session_info["host_id"] == sender_id
+                else session_info["host_id"]
+            )
+            __send_to_receiver(receiver_id, packet)
+            return
+
+        sessions = SessionManager.get_all_sessions(sender_id)
+        if not sessions:
+            logger.warning(f"Session not found for sender {sender_id}. Dropping packet")
+            return
+
+        need_clone = len(sessions) > 1
+
+        for session_id, session in sessions.items():
+            receiver_id = (
+                session["controller_id"]
+                if session["host_id"] == sender_id
+                else session["host_id"]
+            )
+
+            if need_clone:
+                pkt = type(packet)(**packet.__dict__)
+                pkt.session_id = session_id
+            else:
+                pkt = packet
+                pkt.session_id = session_id
+
+            __send_to_receiver(receiver_id, pkt)

@@ -66,7 +66,6 @@ def capture_frame(
         if not img_bgra:
             return None
 
-        # BGRX loại bỏ kênh Alpha không cần thiết
         img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
 
         if draw_cursor and mouse_controller and sys.platform == "win32":

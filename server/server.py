@@ -20,6 +20,7 @@ class Server:
         self.host = host
         self.port = port
         self.socket = None
+        self.is_listening = False
         self.shutdown_event = threading.Event()
         self.use_ssl = use_ssl
         self.cert_file = cert_file
@@ -51,7 +52,7 @@ class Server:
             SessionManager.start_cleanup()
 
             while not self.shutdown_event.is_set():
-                self.socket.settimeout(0.5)
+                self.socket.settimeout(1.0)
                 try:
                     client_socket, addr = self.socket.accept()
 
@@ -59,12 +60,16 @@ class Server:
                         logger.warning(
                             f"Max clients reached. Rejecting connection from {addr}"
                         )
-                        rejection_packet = ConnectionResponsePacket(
-                            connection_status=Status.SERVER_FULL,
-                            message="Server is full, please try again later",
-                        )
-                        Protocol.send_packet(client_socket, rejection_packet)
-                        client_socket.close()
+                        try:
+                            rejection_packet = ConnectionResponsePacket(
+                                connection_status=Status.SERVER_FULL,
+                                message="Server is full, please try again later",
+                            )
+                            Protocol.send_packet(client_socket, rejection_packet)
+                        except Exception as e:
+                            logger.error(f"Failed to send rejection packet: {e}")
+                        finally:
+                            client_socket.close()
                         continue
 
                     client_id = generate_numeric_id(9)
@@ -141,16 +146,20 @@ class Server:
         """Thread chuyên gửi packet từ queue của một client."""
         send_queue = ClientManager.get_client_queue(client_id)
         if not send_queue:
+            logger.warning(f"No queue found for client {client_id}")
             return
 
-        while ClientManager.is_client_exist(client_id):
+        while (
+            ClientManager.is_client_exist(client_id)
+            and not self.shutdown_event.is_set()
+        ):
             try:
-                packet = send_queue.get(timeout=1)
+                packet = send_queue.get(timeout=0.1)
                 Protocol.send_packet(client_socket, packet)
-                # send_queue.task_done()
             except queue.Empty:
                 continue
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Error sending packet to {client_id}: {e}")
                 break
 
         logger.debug(f"Sender worker for client {client_id} stopped")
@@ -163,6 +172,7 @@ class Server:
         client_semaphore: threading.Semaphore,
     ):
         """Main handler loop cho client"""
+        sender_thread = None
         try:
             ClientManager.add_client(client_socket, client_id, client_addr)
             logger.info(f"Client {client_id} connected from {client_addr}")
@@ -172,7 +182,10 @@ class Server:
             )
             sender_thread.start()
 
-            while ClientManager.is_client_exist(client_id):
+            while (
+                ClientManager.is_client_exist(client_id)
+                and not self.shutdown_event.is_set()
+            ):
                 packet = Protocol.receive_packet(client_socket)
                 if not packet:
                     break
@@ -180,16 +193,17 @@ class Server:
                 RelayHandler.relay_packet(packet, client_socket)
 
         except ValueError as ve:
-            logger.error(f"{ve}")
+            logger.error(f"ValueError in handle_client for {client_id}: {ve}")
         except Exception:
             pass
         finally:
-            client_socket.close()
-            session = SessionManager.get_all_sessions(client_id)
-            if session:
-                for sess_id in session.keys():
+            sessions = SessionManager.get_all_sessions(client_id)
+            if sessions:
+                for sess_id in list(sessions.keys()):
                     SessionManager.end_session(sess_id)
 
             ClientManager.remove_client(client_id)
+            client_socket.close()
+
             client_semaphore.release()
             logger.info(f"Client {client_id} disconnected from {client_addr}")
