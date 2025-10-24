@@ -125,16 +125,16 @@ def get_hardware_id() -> str:
                 if line and line.lower() != "uuid":
                     return line
         except subprocess.CalledProcessError:
-            return str(uuid.getnode())
+            return get_hostname()
 
     elif sys.platform == "linux":
         try:
             with open("/etc/machine-id", "r") as f:
                 return f.read().strip()
         except IOError:
-            return str(uuid.getnode())
+            return get_hostname()
 
-    return str(uuid.getnode())
+    return get_hostname()
 
 
 def get_resource_usage():

@@ -1,8 +1,9 @@
-# remote_widget_controller.py
 import logging
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QPixmap
+
+from client.services.keyboard_listener_service import KeyboardListenerService
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,11 @@ class RemoteWidgetController(QObject):
         self._running = False
         self._cleanup_done = False
 
+        self.keyboard_listener = KeyboardListenerService()
+
         self._connect_signals()
 
-        logger.info(f"RemoteWidgetController initialized for session: {session_id}")
+        logger.info("RemoteWidgetController initialized")
         self.start()
 
     def _connect_signals(self):
@@ -136,20 +139,24 @@ class RemoteWidgetController(QObject):
             SessionManager.remove_session(self.session_id)
 
             from client.handlers.send_handler import SendHandler
+
             SendHandler.send_end_session_packet(session_id)
             self.cleanup()
-            
 
     def start(self):
         if self._running:
             return
         self._running = True
+        # Bắt đầu lắng nghe sự kiện bàn phím
+        self.keyboard_listener.start()
         logger.debug(f"RemoteWidgetController started for session: {self.session_id}")
 
     def stop(self):
         if not self._running:
             return
         self._running = False
+        # Dừng lắng nghe sự kiện bàn phím
+        self.keyboard_listener.stop()
         logger.info(f"RemoteWidgetController stopped for session: {self.session_id}")
 
     def cleanup(self):
@@ -159,7 +166,7 @@ class RemoteWidgetController(QObject):
         self._cleanup_done = True
 
         try:
-            self.stop()   
+            self.stop()
             logger.info(f"RemoteWidgetController cleanup completed: {self.session_id}")
         except Exception as e:
             logger.error(f"Error during controller cleanup: {e}", exc_info=True)

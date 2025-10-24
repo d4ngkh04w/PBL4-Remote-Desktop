@@ -14,6 +14,7 @@ class SessionResources:
     widget: Optional[Any] = (
         None  # RemoteWidget (có controller bên trong) hoặc None cho host
     )
+    keyboard_executor: Optional[Any] = None  # KeyboardExecutorService cho host
 
     def cleanup(self):
         """Dọn dẹp tất cả tài nguyên của session."""
@@ -27,6 +28,11 @@ class SessionResources:
             if self.widget and hasattr(self.widget, "close"):
                 self.widget.close()
                 logger.debug("Widget closed")
+
+            # Dừng keyboard executor
+            if self.keyboard_executor and hasattr(self.keyboard_executor, "stop"):
+                self.keyboard_executor.stop()
+                logger.debug("Keyboard executor stopped")
 
         except Exception as e:
             logger.error(f"Error during resource cleanup: {e}", exc_info=True)
@@ -64,12 +70,19 @@ class SessionManager:
 
     @classmethod
     def _create_host_session(cls, session_id: str):
-        """Tạo host session - thêm vào screen share service."""
+        """Tạo host session - thêm vào screen share service và khởi tạo keyboard executor."""
         from client.services.screen_share_service import screen_share_service
+        from client.services.keyboard_executor_service import KeyboardExecutorService
 
         # Thêm session vào screen share service
         screen_share_service.add_session(session_id)
         logger.info(f"Added session to screen sharing: {session_id}")
+
+        # Khởi tạo keyboard executor cho host session
+        keyboard_executor = KeyboardExecutorService()
+        keyboard_executor.start()
+        cls._sessions[session_id].keyboard_executor = keyboard_executor
+        logger.info(f"Created keyboard executor for host session: {session_id}")
 
     @classmethod
     def remove_session(cls, session_id: str):
@@ -107,6 +120,16 @@ class SessionManager:
         """Lấy decoder cho session."""
         session = cls._sessions.get(session_id)
         return session.decoder if session else None
+
+    # ---------------------------
+    # Quản lý Keyboard Executor
+    # ---------------------------
+
+    @classmethod
+    def get_session_keyboard_executor(cls, session_id: str):
+        """Lấy keyboard executor cho session."""
+        session = cls._sessions.get(session_id)
+        return session.keyboard_executor if session else None
 
     # ---------------------------
     # Quản lý Widget

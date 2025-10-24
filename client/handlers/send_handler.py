@@ -3,13 +3,13 @@ import logging
 from common.packets import (
     AuthenticationPasswordPacket,
     ConnectionRequestPacket,
+    KeyboardPacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
 )
-from common.enums import Status
+from common.enums import Status, KeyBoardEventType, KeyBoardType
 from client.managers.client_manager import ClientManager
-from client.managers.session_manager import SessionManager
 from client.services.sender_service import SenderService
 
 logger = logging.getLogger(__name__)
@@ -74,3 +74,22 @@ class SendHandler:
             video_data=video_data,
         )
         SenderService.send_packet(video_stream_packet)
+
+    @classmethod
+    def send_keyboard_packet(
+        cls,
+        event_type: KeyBoardEventType,
+        key_type: KeyBoardType,
+        key_name: str | None = None,
+        key_vk: int | None = None,
+        session_id: str | None = None,
+    ):
+        """Gửi KeyboardPacket"""
+        keyboard_packet = KeyboardPacket(
+            session_id=session_id,
+            event_type=event_type,
+            key_type=key_type,
+            key_name=key_name,
+            key_vk=key_vk,
+        )
+        SenderService.send_packet(keyboard_packet)

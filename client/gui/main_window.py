@@ -254,6 +254,70 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(copy_pass_btn)
         layout.addLayout(btn_layout)
 
+        # Custom Password Section
+        custom_pass_group = QGroupBox("Custom Password (Optional)")
+        custom_pass_group.setStyleSheet(
+            """
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #ff6600;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """
+        )
+        custom_pass_layout = QVBoxLayout(custom_pass_group)
+
+        info_label = QLabel(
+            "Set a permanent password that won't change when you refresh."
+        )
+        info_label.setStyleSheet("font-size: 12px; color: #666; font-style: italic;")
+        info_label.setWordWrap(True)
+        custom_pass_layout.addWidget(info_label)
+
+        custom_pass_btn_layout = QHBoxLayout()
+
+        set_custom_pass_btn = QPushButton("🔐 Set Custom Password")
+        set_custom_pass_btn.setMinimumHeight(40)
+        set_custom_pass_btn.setStyleSheet(btn_style)
+        set_custom_pass_btn.clicked.connect(self.controller.request_set_custom_password)
+
+        remove_custom_pass_btn = QPushButton("❌ Remove Custom Password")
+        remove_custom_pass_btn.setMinimumHeight(40)
+        remove_custom_pass_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+            QPushButton:pressed {
+                background-color: #bd2130;
+            }
+        """
+        )
+        remove_custom_pass_btn.clicked.connect(
+            self.controller.request_remove_custom_password
+        )
+
+        custom_pass_btn_layout.addWidget(set_custom_pass_btn)
+        custom_pass_btn_layout.addWidget(remove_custom_pass_btn)
+        custom_pass_layout.addLayout(custom_pass_btn_layout)
+
+        layout.addWidget(custom_pass_group)
+
         layout.addStretch()
         self.tabs.addTab(host_widget, "🏠 Your ID")
 

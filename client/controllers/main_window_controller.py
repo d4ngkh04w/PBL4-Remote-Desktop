@@ -117,6 +117,51 @@ class MainWindowController(QObject):
         password = ClientManager.get_password()
         self.text_copied_to_clipboard.emit("Password", password)
 
+    def request_set_custom_password(self):
+        """Yêu cầu View hiển thị dialog để đặt mật khẩu tự đặt."""
+        from client.gui.password_dialog import PasswordDialog
+
+        # Tạo dialog
+        dialog = PasswordDialog()
+
+        # Hiển thị dialog và chờ kết quả
+        if dialog.exec_() == PasswordDialog.Accepted:
+            password = dialog.get_password()
+
+            # Set mật khẩu
+            ClientManager.set_custom_password(password)
+            self.notification_requested.emit(
+                "Custom password has been set successfully!", "info"
+            )
+            self.status_updated.emit("Custom password activated.")
+
+    def request_remove_custom_password(self):
+        """Yêu cầu xóa mật khẩu tự đặt."""
+        from PyQt5.QtWidgets import QMessageBox
+
+        # Kiểm tra xem có mật khẩu tự đặt không
+        if ClientManager.get_custom_password() is None:
+            self.notification_requested.emit(
+                "No custom password is currently set.", "info"
+            )
+            return
+
+        # Xác nhận xóa
+        reply = QMessageBox.question(
+            None,
+            "Remove Custom Password",
+            "Are you sure you want to remove your custom password?",
+            QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            ClientManager.set_custom_password(None)
+            self.notification_requested.emit(
+                "Custom password has been removed.", "info"
+            )
+            self.status_updated.emit("Custom password deactivated.")
+
     def notify_session_ended(self, session_id: str):
         """Nhận thông báo từ View rằng một session đã kết thúc."""
         try:
