@@ -117,7 +117,7 @@ class VideoConfigPacket(BasePacket):
         height: int,
         fps: int,
         codec: str,
-        extradata: bytes | None = None,
+        extradata: bytes,
     ):
         super().__init__(PacketType.VIDEO_CONFIG)
         self.session_id = session_id

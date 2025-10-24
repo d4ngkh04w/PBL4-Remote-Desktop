@@ -129,14 +129,9 @@ class RemoteWidgetController(QObject):
     @pyqtSlot(str)
     def handle_disconnect_request(self, session_id: str):
         """Xử lý yêu cầu ngắt kết nối từ widget."""
-        if session_id == self.session_id:
-            logger.info(f"Disconnect requested for session: {session_id}")
+        if session_id == self.session_id:            
             from client.managers.session_manager import SessionManager
-
-            SessionManager.remove_session(self.session_id)
-
-            from client.handlers.send_handler import SendHandler
-            SendHandler.send_end_session_packet(session_id)
+            SessionManager.remove_widget_session(self.session_id)            
             self.cleanup()
             
 

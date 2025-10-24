@@ -136,7 +136,7 @@ class RemoteWidget(QWidget):
             if self.isFullScreen():
                 self.toggle_fullscreen_ui()
             else:
-                self.disconnect_requested.emit(self.session_id)
+                self.close()
         elif event.key() == Qt.Key.Key_F11:
             self.fullscreen_requested.emit()
         # Gửi sự kiện phím bấm cho controller xử lý (nếu cần)
@@ -154,16 +154,7 @@ class RemoteWidget(QWidget):
         """Xử lý sự kiện đóng cửa sổ."""
         if not self._cleanup_done:
             # Gửi end session trước khi đóng widget
-            try:
-                from client.handlers.send_handler import SendHandler
-
-                SendHandler.send_end_session_packet(self.session_id)
-                logger.info(
-                    f"Sent end session packet for widget closure: {self.session_id}"
-                )
-            except Exception as e:
-                logger.error(f"Error sending end session packet: {e}", exc_info=True)
-
+            self.disconnect_requested.emit(self.session_id)
             self.cleanup()
         event.accept()
 

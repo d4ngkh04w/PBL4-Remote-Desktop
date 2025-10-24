@@ -1,5 +1,4 @@
 import logging
-from PyQt5.QtGui import QPixmap, QImage
 
 from common.enums import Status
 from client.managers.client_manager import ClientManager
@@ -114,40 +113,8 @@ class ReceiveHandler:
 
         # Nếu session kết thúc, dọn dẹp
         elif packet.status == Status.SESSION_ENDED:
-            logger.info(f"Received session ended for: {packet.session_id}")
-
-            # Kiểm tra session có tồn tại không trước khi xử lý
-            if SessionManager.session_exists(packet.session_id):
-                session_role = SessionManager.get_session_role(packet.session_id)
-
-                # Nếu là controller session, đóng widget nếu có
-                if session_role == "controller":
-                    widget = SessionManager.get_session_widget(packet.session_id)
-                    if widget and hasattr(widget, "close"):
-                        try:
-                            widget._cleanup_done = (
-                                True  # Prevent sending another end session
-                            )
-                            widget.close()
-                            logger.debug(
-                                f"Closed widget for session: {packet.session_id}"
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Error closing widget for session {packet.session_id}: {e}"
-                            )
-
-                # Remove session từ SessionManager
-                SessionManager.remove_session(packet.session_id)
-
-                # Thông báo cho main window controller
-                main_window_controller.status_updated.emit(
-                    f"Session {packet.session_id} ended by remote."
-                )
-            else:
-                logger.warning(
-                    f"Received session ended for non-existent session: {packet.session_id}"
-                )
+            logger.debug(f"Received session ended for: {packet.session_id}")
+            SessionManager.remove_session(packet.session_id)
 
     # ----------------------------
     # Controller
@@ -159,22 +126,25 @@ class ReceiveHandler:
         Xử lý VideoConfigPacket - setup decoder.
         Packet này được gửi TRƯỚC khi gửi video frames.
         """
-        try:
-            session_id = packet.session_id
-            # Tạo decoder cho session
-            decoder = H264Decoder(extradata=packet.extradata)
-            SessionManager.set_session_decoder(session_id, decoder)
-
-            # Gửi thông tin config đến controller để cập nhật UI
-            widget = SessionManager.get_session_widget(session_id)
-            if widget and hasattr(widget, "controller"):
-                widget.controller.handle_video_config_received(
-                    packet.width, packet.height, packet.fps, packet.codec
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling VideoConfigPacket: {e}", exc_info=True)
-
+        if (
+            not hasattr(packet, "session_id")
+            or not hasattr(packet, "extradata")
+            or not hasattr(packet, "width")
+            or not hasattr(packet, "height")
+            or not hasattr(packet, "fps")
+            or not hasattr(packet, "codec")
+        ):
+            logger.error("Invalid video config packet")
+            return
+        SessionManager.handle_config_data(
+            packet.session_id,
+            packet.extradata,
+            packet.width,
+            packet.height,
+            packet.fps,
+            packet.codec,
+        )
+       
     @staticmethod
     def __handle_video_stream_packet(packet: VideoStreamPacket):
         """
@@ -187,46 +157,7 @@ class ReceiveHandler:
             logger.error("Received VideoStreamPacket with empty fields.")
             return
 
-        session_id = packet.session_id
-
-        try:
-            # Lấy decoder cho session
-            decoder = SessionManager.get_session_decoder(session_id)
-            if not decoder:
-                logger.warning(f"No decoder found for session: {session_id}")
-                return
-
-            # Giải mã video frame
-            pil_image = decoder.decode(packet.video_data)
-            if not pil_image:
-                return  # Frame chưa hoàn chỉnh (B-frame)
-
-            # Chuyển PIL Image -> QPixmap
-            img_data = pil_image.tobytes("raw", "RGB")
-            qimage = QImage(
-                img_data,
-                pil_image.width,
-                pil_image.height,
-                pil_image.width * 3,
-                QImage.Format.Format_RGB888,
-            )
-            pixmap = QPixmap.fromImage(qimage)
-
-            # Gửi frame đã decode cho controller
-            widget = SessionManager.get_session_widget(session_id)
-            if widget and hasattr(widget, "controller"):
-                widget.controller.handle_decoded_frame(pixmap)
-
-        except Exception as e:
-            logger.error(
-                f"Error handling VideoStreamPacket for session {session_id}: {e}",
-                exc_info=True,
-            )
-
-            # Thông báo lỗi cho controller
-            widget = SessionManager.get_session_widget(session_id)
-            if widget and hasattr(widget, "controller"):
-                widget.controller.handle_decode_error(f"Decode error: {str(e)}")
+        SessionManager.handle_video_data(packet.session_id, packet.video_data)    
 
     # ----------------------------
     # Host

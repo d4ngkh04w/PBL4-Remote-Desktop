@@ -1,8 +1,7 @@
 import threading
 import time
 import logging
-from typing import Dict
-from dataclasses import dataclass
+from typing import Set
 
 from pynput.mouse import Controller
 import mss
@@ -14,17 +13,9 @@ from client.services.performance_monitor import performance_monitor
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SessionInfo:
-    """Thông tin session cần stream tới."""
-    session_id: str
-    config_sent: bool = False
-
-
 class ScreenShareService:
     """
-    Screen sharing service - capture 1 lần, gửi cho nhiều sessions.    
+    Screen sharing service - capture 1 lần, gửi cho nhiều sessions.
     """
 
     _instance = None
@@ -49,7 +40,7 @@ class ScreenShareService:
         self._bitrate = 2_000_000
 
         # Quản lý sessions
-        self._active_sessions: Dict[str, SessionInfo] = {}
+        self._active_sessions: Set[str] = set()
         self._sessions_lock = threading.RLock()
 
         # Streaming state
@@ -66,15 +57,11 @@ class ScreenShareService:
     def add_session(self, session_id: str):
         """Thêm session cần stream tới và gửi config ngay lập tức."""
         with self._sessions_lock:
-            session_info = SessionInfo(session_id=session_id)
-            self._active_sessions[session_id] = session_info
-            logger.info(f"Added session to centralized streaming: {session_id}")
-
-            # Khởi tạo encoder nếu chưa có
+            self._active_sessions.add(session_id)
+            
             if not self._encoder:
                 self._initialize_encoder()
-
-            # Gửi config cho session mới nếu encoder đã sẵn sàng
+           
             self._send_config_to_session(session_id)
 
             if not self._is_running.is_set():
@@ -100,8 +87,7 @@ class ScreenShareService:
                     "width": width,
                     "height": height,
                 }
-
-                # 📸 Capture 1 dummy frame để lấy extradata
+                
                 img = capture_frame(
                     sct_instance=sct,
                     monitor=monitor,
@@ -110,11 +96,13 @@ class ScreenShareService:
                 )
                 if img:
                     self._encoder.encode(img)
-                    logger.info(
+                    logger.debug(
                         f"Encoder initialized with dummy frame: {width}x{height}@{self._fps}fps"
                     )
                 else:
-                    logger.warning("Failed to capture dummy frame for encoder initialization")
+                    logger.warning(
+                        "Failed to capture dummy frame for encoder initialization"
+                    )
 
         except Exception as e:
             logger.error(f"Error initializing encoder: {e}", exc_info=True)
@@ -134,23 +122,22 @@ class ScreenShareService:
                         extradata=extradata,
                     )
 
-                    # Mark config as sent
-                    if session_id in self._active_sessions:
-                        self._active_sessions[session_id].config_sent = True
                 except Exception as e:
                     logger.error(f"Error sending config to {session_id}: {e}")
             else:
-                logger.warning(f"Cannot send config to {session_id}: encoder not ready or no extradata")
+                logger.warning(
+                    f"Cannot send config to {session_id}: encoder not ready or no extradata"
+                )
 
     def remove_session(self, session_id: str):
         """Xóa session khỏi danh sách stream."""
         with self._sessions_lock:
-            # Tìm và xóa session
             if session_id in self._active_sessions:
-                del self._active_sessions[session_id]
-                logger.info(f"Removed session from centralized streaming: {session_id}")
+                self._active_sessions.remove(session_id)
+                logger.debug(
+                    f"Removed session from centralized streaming: {session_id}"
+                )
 
-            # Dừng streaming nếu không còn session nào
             if not self._active_sessions and self._is_running.is_set():
                 self._stop_streaming()
 
@@ -198,9 +185,7 @@ class ScreenShareService:
                     with self._sessions_lock:
                         if not self._active_sessions:
                             break
-                        active_sessions = list(
-                            self._active_sessions.values()
-                        )  # Copy SessionInfo objects
+                        active_sessions_count = len(self._active_sessions)
 
                     # Encoder sẽ được khởi tạo trong add_session(), nhưng double-check
                     if not self._encoder or not self._screen_config:
@@ -229,11 +214,11 @@ class ScreenShareService:
                         continue
 
                     # ENCODE 1 LẦN
-                    video_data = self._encoder.encode(img)     
+                    video_data = self._encoder.encode(img)
 
                     # 📡 GỬI 1 VIDEO PACKET LÊN SERVER (không có session_id cụ thể)
                     if video_data:
-                        try:                            
+                        try:
                             SendHandler.send_video_stream_packet(
                                 video_data=video_data,
                             )
@@ -243,7 +228,7 @@ class ScreenShareService:
                             video_data_size = len(video_data)
                             performance_monitor.record_frame_sent(
                                 frame_size_bytes=video_data_size,
-                                sessions_count=len(active_sessions),
+                                sessions_count=active_sessions_count,
                             )
                         except Exception as e:
                             logger.error(f"Error sending broadcast video packet: {e}")
@@ -262,21 +247,6 @@ class ScreenShareService:
 
             except Exception as e:
                 logger.error(f"Centralized stream error: {e}", exc_info=True)
-            finally:
-                # Cleanup
-                if self._encoder:
-                    try:
-                        final_data = self._encoder.flush()
-                        if final_data:
-                            # Gửi final data (chỉ 1 lần cho tất cả sessions)
-                            SendHandler.send_video_stream_packet(                                    
-                                video_data=final_data,
-                            )
-                    except Exception as e:
-                        logger.error(f"Error sending final data: {e}")
-
-                    self._encoder.close()
-                    self._encoder = None
 
 # Global instance
 screen_share_service = ScreenShareService()

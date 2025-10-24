@@ -430,22 +430,18 @@ class MainWindow(QMainWindow):
 
             remote_widget = RemoteWidget(session_id)
 
-            # Đăng ký widget với SessionManager
-            if SessionManager.session_exists(session_id):
-                SessionManager._sessions[session_id].widget = remote_widget
+            SessionManager._sessions[session_id].widget = remote_widget
 
-                self.controller.connect_button_state_changed.emit(
-                    True, "🔗 Connect to Partner"
-                )
+            self.controller.connect_button_state_changed.emit(
+                True, "🔗 Connect to Partner"
+            )
 
-                remote_widget.show()
-                remote_widget.raise_()
-                remote_widget.activateWindow()
+            remote_widget.show()
+            remote_widget.raise_()
+            remote_widget.activateWindow()
 
-                logger.debug(f"Remote widget created in main thread: {session_id}")
-                self.update_status_bar(f"Remote session started: {session_id}")
-            else:
-                logger.error(f"Session {session_id} not found when creating widget")
+            logger.debug(f"Remote widget created in main thread: {session_id}")
+            self.update_status_bar(f"Remote session started: {session_id}")
 
         except Exception as e:
             logger.error(
