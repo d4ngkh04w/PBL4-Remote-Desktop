@@ -59,13 +59,14 @@ class SendHandler:
         SenderService.send_packet(video_config_packet)
 
     @classmethod
-    def send_video_stream_packet(cls, session_id: str, frame_data: bytes):
-        """Gửi VideoStreamPacket"""
+    def send_video_stream_packet(cls, video_data: bytes):
+        """Gửi VideoStreamPacket broadcast - server sẽ relay cho tất cả controller sessions"""
         video_stream_packet = VideoStreamPacket(
-            session_id=session_id,
-            video_data=frame_data,            
+            session_id= None,  
+            video_data=video_data,
         )
         SenderService.send_packet(video_stream_packet)
+        
 
     
 

@@ -3,7 +3,7 @@ from PyQt5.QtGui import QPixmap, QImage
 
 from common.enums import Status
 from client.managers.client_manager import ClientManager
-from client.controllers.main_window_controller import MainWindowController
+from client.controllers.main_window_controller import main_window_controller
 from client.managers.session_manager import SessionManager
 from common.packets import (
     AssignIdPacket,
@@ -47,9 +47,7 @@ class ReceiveHandler:
             logger.error("Received AssignIdPacket with empty fields.")
             return
         ClientManager.set_client_id(packet.client_id)
-        main_window_controller = MainWindowController.get_instance()
-        if main_window_controller:
-            main_window_controller.on_client_id_received()
+        main_window_controller.on_client_id_received()
 
     @staticmethod
     def __handle_connection_response_packet(packet: ConnectionResponsePacket):
@@ -57,19 +55,14 @@ class ReceiveHandler:
         if not hasattr(packet, "connection_status") or not hasattr(packet, "message"):
             logger.error("Invalid connection response packet")
             return
-        main_window_controller = MainWindowController.get_instance()
-        if not main_window_controller:
-            logger.error("MainWindowController instance not found.")
-            return
 
         if packet.connection_status == Status.INVALID_PASSWORD:
-            if main_window_controller:
-                main_window_controller.on_ui_show_notification(
-                    "Connection rejected: Invalid password.", "error"
-                )
-                main_window_controller.on_ui_update_status(
-                    "Connection rejected: Invalid password."
-                )
+            main_window_controller.on_ui_show_notification(
+                "Connection rejected: Invalid password.", "error"
+            )
+            main_window_controller.on_ui_update_status(
+                "Connection rejected: Invalid password."
+            )
 
         elif packet.connection_status == Status.SERVER_FULL:
             logger.info("Connection rejected: Server is full.")
@@ -98,7 +91,7 @@ class ReceiveHandler:
 
     @staticmethod
     def __handle_session_packet(packet: SessionPacket):
-        """Xử lý gói tin SessionPacket."""       
+        """Xử lý gói tin SessionPacket."""
         if (
             not hasattr(packet, "session_id")
             or not hasattr(packet, "status")
@@ -116,16 +109,18 @@ class ReceiveHandler:
                 logger.error("SessionPacket missing role")
                 return
             logger.info(f"Session started: {packet.session_id} as {packet.role}")
-            # Ủy thác cho SessionManager tạo session và khởi tạo resources
+
             SessionManager.create_session(packet.session_id, packet.role)
 
         # Nếu session kết thúc, dọn dẹp
         elif packet.status == Status.SESSION_ENDED:
             SessionManager.remove_session(packet.session_id)
-            # Thông báo cho main window controller để đóng widget
-            main_window_controller = MainWindowController.get_instance()
-            if main_window_controller:
-                main_window_controller.notify_session_ended(packet.session_id)
+            main_window_controller.notify_session_ended(packet.session_id)
+
+    # ----------------------------
+    # Controller
+    # ----------------------------
+    
 
     @staticmethod
     def __handle_video_config_packet(packet: VideoConfigPacket):
@@ -138,15 +133,6 @@ class ReceiveHandler:
             # Tạo decoder cho session
             decoder = H264Decoder(extradata=packet.extradata)
             SessionManager.set_session_decoder(session_id, decoder)
-
-            # Lưu thông tin config
-            config = {
-                "width": packet.width,
-                "height": packet.height,
-                "fps": packet.fps,
-                "codec": packet.codec,
-            }
-            SessionManager.set_session_config(session_id, config)
 
             # Gửi thông tin config đến controller để cập nhật UI
             widget = SessionManager.get_session_widget(session_id)
@@ -211,11 +197,10 @@ class ReceiveHandler:
             if widget and hasattr(widget, "controller"):
                 widget.controller.handle_decode_error(f"Decode error: {str(e)}")
 
-    
-
     # ----------------------------
     # Host
     # ----------------------------
+
     @staticmethod
     def __handle_connection_request_packet(packet: ConnectionRequestPacket):
         """Xử lý ConnectionRequestPacket"""

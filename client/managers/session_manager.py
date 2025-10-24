@@ -11,11 +11,9 @@ class SessionResources:
 
     role: str
     decoder: Optional[Any] = None
-    config: Optional[dict] = None
     widget: Optional[Any] = (
         None  # RemoteWidget (có controller bên trong) hoặc None cho host
     )
-    screen_share_service: Optional[Any] = None
 
     def cleanup(self):
         """Dọn dẹp tất cả tài nguyên của session."""
@@ -24,11 +22,6 @@ class SessionResources:
             if self.decoder and hasattr(self.decoder, "close"):
                 self.decoder.close()
                 logger.debug("Decoder closed")
-
-            # Dừng screen share service
-            if self.screen_share_service and hasattr(self.screen_share_service, "stop"):
-                self.screen_share_service.stop()
-                logger.info("Screen share service stopped")
 
             # Đóng widget
             if self.widget and hasattr(self.widget, "close"):
@@ -47,7 +40,6 @@ class SessionManager:
     @classmethod
     def create_session(cls, session_id: str, role: str):
         """Tạo session mới và khởi tạo các resources cần thiết."""
-        # Tạo session
         cls._sessions[session_id] = SessionResources(role=role)
 
         try:
@@ -60,31 +52,24 @@ class SessionManager:
 
         except Exception as e:
             logger.error(f"Error creating session {session_id}: {e}", exc_info=True)
-            # Cleanup nếu có lỗi
             cls.remove_session(session_id)
             raise
 
     @classmethod
     def _create_controller_session(cls, session_id: str):
         """Tạo controller session - yêu cầu MainWindowController tạo widget."""
-        from client.controllers.main_window_controller import MainWindowController
+        from client.controllers.main_window_controller import main_window_controller
 
-        main_controller = MainWindowController.get_instance()
-        if main_controller:
-            main_controller.widget_creation_requested.emit(session_id)
-        else:
-            logger.error("MainWindowController not found")
+        main_window_controller.widget_creation_requested.emit(session_id)
 
     @classmethod
     def _create_host_session(cls, session_id: str):
-        """Tạo host session - thêm vào centralized screen share service."""
-        from client.services.centralized_screen_share_service import (
-            centralized_screen_share_service,
-        )
+        """Tạo host session - thêm vào screen share service."""
+        from client.services.screen_share_service import screen_share_service
 
-        # Thêm session vào centralized service
-        centralized_screen_share_service.add_session(session_id)
-        logger.info(f"Added session to centralized screen sharing: {session_id}")
+        # Thêm session vào screen share service
+        screen_share_service.add_session(session_id)
+        logger.info(f"Added session to screen sharing: {session_id}")
 
     @classmethod
     def remove_session(cls, session_id: str):
@@ -95,22 +80,18 @@ class SessionManager:
                 f"Removing session: {session_id} (role: {session_resource.role})"
             )
 
-            # Nếu là host session, xóa khỏi centralized service
+            # Nếu là host session, xóa khỏi screen share service
             if session_resource.role == "host":
-                from client.services.centralized_screen_share_service import (
-                    centralized_screen_share_service,
-                )
+                from client.services.screen_share_service import screen_share_service
 
-                centralized_screen_share_service.remove_session(session_id)
+                screen_share_service.remove_session(session_id)
 
             # Dọn dẹp tài nguyên
             session_resource.cleanup()
 
             # Xóa session
-            del cls._sessions[session_id]
-            logger.info(f"Session removed: {session_id}")
+            del cls._sessions[session_id]  # ---------------------------
 
-    # ---------------------------
     # Quản lý Decoder
     # ---------------------------
 
@@ -128,40 +109,6 @@ class SessionManager:
         return session.decoder if session else None
 
     # ---------------------------
-    # Quản lý Config
-    # ---------------------------
-
-    @classmethod
-    def set_session_config(cls, session_id: str, config: dict):
-        """Đặt config cho session."""
-        if session_id in cls._sessions:
-            cls._sessions[session_id].config = config
-            logger.debug(f"Set config for session: {session_id}")
-
-    # @classmethod
-    # def get_session_config(cls, session_id: str):
-    #     """Lấy config cho session."""
-    #     session = cls._sessions.get(session_id)
-    #     return session.config if session else None
-
-    # ---------------------------
-    # Quản lý Screen Share Service
-    # ---------------------------
-
-    @classmethod
-    def set_screen_share_service(cls, session_id: str, service):
-        """Đặt screen share service cho session."""
-        if session_id in cls._sessions:
-            cls._sessions[session_id].screen_share_service = service
-            logger.info(f"Set screen share service for session: {session_id}")
-
-    # @classmethod
-    # def get_screen_share_service(cls, session_id: str):
-    #     """Lấy screen share service cho session."""
-    #     session = cls._sessions.get(session_id)
-    #     return session.screen_share_service if session else None
-
-    # ---------------------------
     # Quản lý Widget
     # ---------------------------
 
@@ -174,43 +121,6 @@ class SessionManager:
     # ---------------------------
     # Các hàm kiểm tra trạng thái
     # ---------------------------
-
-    # @classmethod
-    # def is_in_session(cls) -> bool:
-    #     """Kiểm tra có đang trong bất kỳ phiên làm việc nào không."""
-    #     return bool(cls._sessions)
-
-    # @classmethod
-    # def is_in_hosting_session(cls) -> bool:
-    #     """Kiểm tra có đang trong phiên làm việc với vai trò host không."""
-    #     return any(session.role == "host" for session in cls._sessions.values())
-
-    # @classmethod
-    # def is_in_controlling_session(cls) -> bool:
-    #     """Kiểm tra có đang trong phiên làm việc với vai trò controller không."""
-    #     return any(session.role == "controller" for session in cls._sessions.values())
-
-    # ---------------------------
-    # Hàm lấy thông tin vai trò
-    # ---------------------------
-
-    # @classmethod
-    # def get_roles(cls) -> set[str]:
-    #     """Lấy danh sách vai trò hiện có (ví dụ: {'host', 'controller'})."""
-    #     return {session.role for session in cls._sessions.values()}
-
-    # @classmethod
-    # def get_role(cls, session_id: str) -> str | None:
-    #     """Lấy vai trò của client trong một phiên cụ thể."""
-    #     session = cls._sessions.get(session_id)
-    #     return session.role if session else None
-
-    # @classmethod
-    # def get_all_sessions(cls) -> Dict[str, str]:
-    #     """Lấy tất cả sessions hiện có dưới dạng dict {session_id: role}."""
-    #     return {
-    #         session_id: session.role for session_id, session in cls._sessions.items()
-    #     }
 
     @classmethod
     def session_exists(cls, session_id: str) -> bool:

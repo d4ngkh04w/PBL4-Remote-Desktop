@@ -4,17 +4,13 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from client.managers.client_manager import ClientManager
 from common.utils import format_numeric_id
 
-# Bỏ hết các import không cần thiết từ QtWidgets
-
 logger = logging.getLogger(__name__)
 
 
 class MainWindowController(QObject):
     """
     Controller chính cho ứng dụng - chỉ chứa logic, không tương tác trực tiếp với UI.
-    """
-
-    _instance = None
+    """   
 
     # --- Signals gửi đi cho View ---
     status_updated = pyqtSignal(str)
@@ -31,22 +27,12 @@ class MainWindowController(QObject):
         str
     )  # session_id - for creating widgets in main thread
 
-    def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        return cls._instance
-
-    def __init__(self, config):
+    def __init__(self):
         super().__init__()
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
-
-        self.config = config
+        
         self._running = False
         logger.debug("MainWindowController initialized.")
 
@@ -149,3 +135,6 @@ class MainWindowController(QObject):
         """Dọn dẹp tài nguyên của controller."""
         self.stop()
         
+main_window_controller = MainWindowController()
+
+

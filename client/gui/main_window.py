@@ -1,6 +1,3 @@
-# main_window.py
-import logging
-
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -17,17 +14,15 @@ from PyQt5.QtWidgets import (
     QApplication,
 )
 from PyQt5.QtCore import Qt, pyqtSlot
-
-from client.controllers.main_window_controller import MainWindowController
-
+from client.controllers.main_window_controller import main_window_controller
+import logging
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
     """
     Cửa sổ chính của ứng dụng (View).
-    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng,
-    và quản lý các cửa sổ con (RemoteWidget).
+    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng, khởi tạo widget    
     """
 
     def __init__(self, config):
@@ -47,7 +42,7 @@ class MainWindow(QMainWindow):
         self.status_bar: QStatusBar | None = None
 
         # Khởi tạo Controller (chỉ truyền config, không truyền self)
-        self.controller = MainWindowController(config)
+        self.controller = main_window_controller
 
         # Setup UI
         self.init_ui()
@@ -431,20 +426,17 @@ class MainWindow(QMainWindow):
         try:
             from client.gui.remote_widget import RemoteWidget
             from client.managers.session_manager import SessionManager
-
-            # Tạo widget trong main thread
+            
             remote_widget = RemoteWidget(session_id)
 
             # Đăng ký widget với SessionManager
             if SessionManager.session_exists(session_id):
                 SessionManager._sessions[session_id].widget = remote_widget
-
-                # Cập nhật connect button state
+                
                 self.controller.connect_button_state_changed.emit(
                     True, "🔗 Connect to Partner"
                 )
-
-                # Hiển thị widget
+                
                 remote_widget.show()
                 remote_widget.raise_()
                 remote_widget.activateWindow()

@@ -5,6 +5,7 @@ import ssl
 
 from PyQt5.QtWidgets import QApplication
 
+from client.controllers.main_window_controller import MainWindowController
 from client.gui.main_window import MainWindow
 from client.services.listener_service import ListenerService
 from client.services.sender_service import SenderService
@@ -83,11 +84,9 @@ class RemoteDesktopClient:
                 logger.error("Failed to initialize services")
                 return False
 
-            from client.controllers.main_window_controller import MainWindowController
+            from client.controllers.main_window_controller import main_window_controller
 
-            controller = MainWindowController.get_instance()
-            if controller:
-                controller.on_connection_established()
+            main_window_controller.on_connection_established
             return True
 
         except Exception as e:
