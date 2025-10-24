@@ -43,13 +43,24 @@ if Config.client:
             cert_file=Config.cert,
             fps=Config.fps,
         )
-        client_instance.run()
+
+        exit_code = client_instance.run()
+
+        # Cleanup sau khi thoát khỏi main loop
+        if client_instance:
+            client_instance.shutdown()
+
+        sys.exit(exit_code if exit_code is not None else 0)
+
     except KeyboardInterrupt:
         logger.debug("Client stopped by user")
         if client_instance:
             client_instance.shutdown()
+        sys.exit(0)
     except Exception as e:
         logger.error(f"Failed to start client: {e}")
+        if client_instance:
+            client_instance.shutdown()
         sys.exit(1)
 
 elif Config.server:

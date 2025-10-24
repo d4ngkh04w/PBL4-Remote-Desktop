@@ -114,13 +114,44 @@ class ReceiveHandler:
 
         # Nếu session kết thúc, dọn dẹp
         elif packet.status == Status.SESSION_ENDED:
-            SessionManager.remove_session(packet.session_id)
-            main_window_controller.notify_session_ended(packet.session_id)
+            logger.info(f"Received session ended for: {packet.session_id}")
+
+            # Kiểm tra session có tồn tại không trước khi xử lý
+            if SessionManager.session_exists(packet.session_id):
+                session_role = SessionManager.get_session_role(packet.session_id)
+
+                # Nếu là controller session, đóng widget nếu có
+                if session_role == "controller":
+                    widget = SessionManager.get_session_widget(packet.session_id)
+                    if widget and hasattr(widget, "close"):
+                        try:
+                            widget._cleanup_done = (
+                                True  # Prevent sending another end session
+                            )
+                            widget.close()
+                            logger.debug(
+                                f"Closed widget for session: {packet.session_id}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error closing widget for session {packet.session_id}: {e}"
+                            )
+
+                # Remove session từ SessionManager
+                SessionManager.remove_session(packet.session_id)
+
+                # Thông báo cho main window controller
+                main_window_controller.status_updated.emit(
+                    f"Session {packet.session_id} ended by remote."
+                )
+            else:
+                logger.warning(
+                    f"Received session ended for non-existent session: {packet.session_id}"
+                )
 
     # ----------------------------
     # Controller
     # ----------------------------
-    
 
     @staticmethod
     def __handle_video_config_packet(packet: VideoConfigPacket):

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class MainWindowController(QObject):
     """
     Controller chính cho ứng dụng - chỉ chứa logic, không tương tác trực tiếp với UI.
-    """   
+    """
 
     # --- Signals gửi đi cho View ---
     status_updated = pyqtSignal(str)
@@ -32,7 +32,7 @@ class MainWindowController(QObject):
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
-        
+
         self._running = False
         logger.debug("MainWindowController initialized.")
 
@@ -130,11 +130,40 @@ class MainWindowController(QObject):
                 f"Error notifying server about session end: {e}", exc_info=True
             )
 
+    def end_all_sessions(self):
+        """Kết thúc tất cả sessions - gọi khi đóng ứng dụng."""
+        try:
+            from client.managers.session_manager import SessionManager
+            from client.handlers.send_handler import SendHandler
+
+            session_ids = SessionManager.get_all_session_ids()
+            if session_ids:
+                logger.info(f"Ending all sessions: {session_ids}")
+                for session_id in session_ids:
+                    try:
+                        SendHandler.send_end_session_packet(session_id)
+                        logger.debug(f"Sent end session packet for: {session_id}")
+                    except Exception as e:
+                        logger.error(f"Error sending end session for {session_id}: {e}")
+
+                # Dọn dẹp tất cả sessions locally
+                SessionManager.cleanup_all_sessions()
+                self.status_updated.emit("All sessions ended.")
+            else:
+                logger.debug("No active sessions to end")
+        except Exception as e:
+            logger.error(f"Error ending all sessions: {e}", exc_info=True)
+
     # --- Dọn dẹp ---
     def cleanup(self):
         """Dọn dẹp tài nguyên của controller."""
-        self.stop()
-        
+        try:
+            # Kết thúc tất cả sessions trước khi dọn dẹp
+            self.end_all_sessions()
+            self.stop()
+            logger.debug("MainWindowController cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during controller cleanup: {e}", exc_info=True)
+
+
 main_window_controller = MainWindowController()
-
-

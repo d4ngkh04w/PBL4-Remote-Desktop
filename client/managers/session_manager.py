@@ -126,3 +126,22 @@ class SessionManager:
     def session_exists(cls, session_id: str) -> bool:
         """Kiểm tra session có tồn tại không."""
         return session_id in cls._sessions
+
+    @classmethod
+    def get_all_session_ids(cls) -> list[str]:
+        """Lấy danh sách tất cả session IDs hiện tại."""
+        return list(cls._sessions.keys())
+
+    @classmethod
+    def get_session_role(cls, session_id: str) -> Optional[str]:
+        """Lấy role của session."""
+        session = cls._sessions.get(session_id)
+        return session.role if session else None
+
+    @classmethod
+    def cleanup_all_sessions(cls):
+        """Dọn dẹp tất cả sessions - dùng khi đóng ứng dụng."""
+        session_ids = list(cls._sessions.keys())
+        for session_id in session_ids:
+            cls.remove_session(session_id)
+        logger.info("All sessions cleaned up")

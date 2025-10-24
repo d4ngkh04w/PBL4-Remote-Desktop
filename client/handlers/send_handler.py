@@ -5,7 +5,7 @@ from common.packets import (
     ConnectionRequestPacket,
     SessionPacket,
     VideoConfigPacket,
-    VideoStreamPacket,   
+    VideoStreamPacket,
 )
 from common.enums import Status
 from client.managers.client_manager import ClientManager
@@ -43,11 +43,19 @@ class SendHandler:
             session_id=session_id,
         )
         SenderService.send_packet(end_session_packet)
-        SessionManager.remove_session(session_id)
+        logger.info(f"Sent end session packet for: {session_id}")
 
     @classmethod
-    def send_video_config_packet(cls, session_id: str, width: int, height: int, fps: int, codec: str, extradata: bytes):
-        """Gửi VideoConfigPacket"""        
+    def send_video_config_packet(
+        cls,
+        session_id: str,
+        width: int,
+        height: int,
+        fps: int,
+        codec: str,
+        extradata: bytes,
+    ):
+        """Gửi VideoConfigPacket"""
         video_config_packet = VideoConfigPacket(
             session_id=session_id,
             width=width,
@@ -62,12 +70,7 @@ class SendHandler:
     def send_video_stream_packet(cls, video_data: bytes):
         """Gửi VideoStreamPacket broadcast - server sẽ relay cho tất cả controller sessions"""
         video_stream_packet = VideoStreamPacket(
-            session_id= None,  
+            session_id=None,
             video_data=video_data,
         )
         SenderService.send_packet(video_stream_packet)
-        
-
-    
-
-   

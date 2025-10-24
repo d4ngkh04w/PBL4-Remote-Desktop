@@ -55,7 +55,7 @@ class RemoteDesktopClient:
         except Exception as e:
             logger.error(f"Failed to create main window - {e}")
             return False
-        
+
     def __connect_to_server(self):
         """Kết nối đến server."""
         try:
@@ -146,17 +146,31 @@ class RemoteDesktopClient:
     def shutdown(self):
         """Dọn dẹp tài nguyên khi đóng ứng dụng."""
         try:
+            logger.info("Starting client shutdown...")
+
+            # Cleanup main window trước (sẽ tự động end tất cả sessions)
             if self.main_window:
                 self.main_window.cleanup()
                 self.main_window = None
 
+            # Shutdown services
+            ListenerService.shutdown()
+            SenderService.shutdown()
+
+            # Close socket
+            if self.socket:
+                try:
+                    self.socket.close()
+                    logger.debug("Socket closed")
+                except Exception as e:
+                    logger.error(f"Error closing socket: {e}")
+                self.socket = None
+
+            # Quit QApplication
             if self.app:
                 self.app.quit()
                 self.app = None
 
-            ListenerService.shutdown()
-            SenderService.shutdown()
-
             logger.info("Client application shutdown completed.")
         except Exception as e:
-            logger.error(f"Error during client shutdown - {e}")
+            logger.error(f"Error during client shutdown: {e}", exc_info=True)

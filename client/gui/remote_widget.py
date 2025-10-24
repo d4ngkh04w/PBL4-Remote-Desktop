@@ -118,7 +118,6 @@ class RemoteWidget(QWidget):
         self.image_label.setText(f"❌ Error: {message}")
         self.status_label.setText("⚠️ Connection Error")
 
-    
     @pyqtSlot()
     def toggle_fullscreen_ui(self):
         """Chuyển đổi chế độ toàn màn hình."""
@@ -154,7 +153,17 @@ class RemoteWidget(QWidget):
     def closeEvent(self, event):
         """Xử lý sự kiện đóng cửa sổ."""
         if not self._cleanup_done:
-            self.disconnect_requested.emit(self.session_id)
+            # Gửi end session trước khi đóng widget
+            try:
+                from client.handlers.send_handler import SendHandler
+
+                SendHandler.send_end_session_packet(self.session_id)
+                logger.info(
+                    f"Sent end session packet for widget closure: {self.session_id}"
+                )
+            except Exception as e:
+                logger.error(f"Error sending end session packet: {e}", exc_info=True)
+
             self.cleanup()
         event.accept()
 

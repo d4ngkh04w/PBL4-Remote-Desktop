@@ -16,13 +16,14 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSlot
 from client.controllers.main_window_controller import main_window_controller
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
     """
     Cửa sổ chính của ứng dụng (View).
-    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng, khởi tạo widget    
+    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng, khởi tạo widget
     """
 
     def __init__(self, config):
@@ -426,17 +427,17 @@ class MainWindow(QMainWindow):
         try:
             from client.gui.remote_widget import RemoteWidget
             from client.managers.session_manager import SessionManager
-            
+
             remote_widget = RemoteWidget(session_id)
 
             # Đăng ký widget với SessionManager
             if SessionManager.session_exists(session_id):
                 SessionManager._sessions[session_id].widget = remote_widget
-                
+
                 self.controller.connect_button_state_changed.emit(
                     True, "🔗 Connect to Partner"
                 )
-                
+
                 remote_widget.show()
                 remote_widget.raise_()
                 remote_widget.activateWindow()
@@ -471,7 +472,7 @@ class MainWindow(QMainWindow):
         self._cleanup_done = True
 
         try:
-            # Dọn dẹp controller
+            # Dọn dẹp controller (sẽ tự động gửi end session cho tất cả sessions)
             if self.controller:
                 self.controller.cleanup()
 
