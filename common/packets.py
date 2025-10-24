@@ -135,11 +135,11 @@ class KeyboardPacket(BasePacket):
 
     def __init__(
         self,
-        session_id: str,
         event_type: KeyBoardEventType,
         key_type: KeyBoardType,
         key_name: str | None = None,  # Tên của phím đặc biệt, ví dụ: 'ctrl_l', 'shift'
         key_vk: int | None = None,  # Mã phím ảo (Virtual-key code) của phím ký tự
+        session_id: str | None = None,
     ):
         super().__init__(PacketType.KEYBOARD)
         self.session_id = session_id
@@ -159,11 +159,11 @@ class MousePacket(BasePacket):
 
     def __init__(
         self,
-        session_id: str,
         event_type: MouseEventType,
         position: tuple[int, int],
         button: MouseButton = MouseButton.UNKNOWN,
         scroll_delta: tuple[int, int] = (0, 0),
+        session_id: str | None = None,
     ):
         super().__init__(PacketType.MOUSE)
         self.session_id = session_id

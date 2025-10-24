@@ -8,6 +8,7 @@ from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
+    KeyboardPacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
@@ -29,6 +30,7 @@ class ReceiveHandler:
             ConnectionRequestPacket: cls.__handle_connection_request_packet,  # Host nhận
             VideoConfigPacket: cls.__handle_video_config_packet,
             VideoStreamPacket: cls.__handle_video_stream_packet,
+            KeyboardPacket: cls.__handle_keyboard_packet,  # Host nhận keyboard events
         }
         handler = packet_handlers.get(type(packet))
         if handler:
@@ -187,3 +189,30 @@ class ReceiveHandler:
             receiver_id=packet.sender_id,
             status=status,
         )
+
+    @staticmethod
+    def __handle_keyboard_packet(packet: KeyboardPacket):
+        """Xử lý KeyboardPacket - thực thi sự kiện bàn phím nhận được"""
+        try:
+            if not hasattr(packet, "session_id") or not hasattr(packet, "event_type"):
+                logger.error("Invalid keyboard packet")
+                return
+
+            if not packet.session_id:
+                logger.error("Received KeyboardPacket with empty session_id")
+                return
+
+            # Lấy keyboard executor từ session
+            session = SessionManager.get_session_keyboard_executor(packet.session_id)
+            if not session:
+                logger.warning(
+                    f"No keyboard executor found for session: {packet.session_id}"
+                )
+                return
+
+            # Thực thi sự kiện bàn phím
+            session.execute_keyboard_packet(packet)
+            logger.debug(f"Executed keyboard packet for session: {packet.session_id}")
+
+        except Exception as e:
+            logger.error(f"Error handling keyboard packet: {e}", exc_info=True)

@@ -13,9 +13,9 @@ class SessionResources:
 
     role: str
     decoder: Optional[Any] = None
-    widget: Optional[Any] = None
-
-
+    widget: Optional[Any] = None    
+    keyboard_executor: Optional[Any] = None  # KeyboardExecutorService cho host
+    
 class SessionManager:
     """Quản lý các phiên làm việc của client (controller / host)."""
 
@@ -33,6 +33,10 @@ class SessionManager:
             elif role == "host":
                 from client.services.screen_share_service import screen_share_service
                 screen_share_service.add_session(session_id)
+                from client.services.keyboard_executor_service import KeyboardExecutorService
+                keyboard_executor = KeyboardExecutorService()
+                keyboard_executor.start()
+                cls._sessions[session_id].keyboard_executor = keyboard_executor
             else:
                 logger.warning(f"Unknown role: {role} for session: {session_id}")
 
@@ -76,7 +80,7 @@ class SessionManager:
             logger.error(
                 f"Error handling config data for session {session_id}: {e}",
                 exc_info=True,
-            )
+            )       
 
     @classmethod
     def handle_video_data(cls, session_id: str, video_data: bytes):
@@ -166,7 +170,7 @@ class SessionManager:
                 from client.handlers.send_handler import SendHandler
                 SendHandler.send_end_session_packet(session_id)
         else:
-            logger.warning(f"Attempted to remove non-existent session: {session_id}")    
+            logger.warning(f"Attempted to remove non-existent session: {session_id}")  
 
     @classmethod
     def cleanup_all_sessions(cls):
@@ -174,7 +178,23 @@ class SessionManager:
         session_ids = list(cls._sessions.keys())
         for session_id in session_ids:
             cls.remove_session(session_id, send_end_packet=True)
-        logger.info("All sessions cleaned up")
+        logger.info("All sessions cleaned up")      
+
+    # ---------------------------
+    # Quản lý Keyboard Executor
+    # ---------------------------
+
+    @classmethod
+    def get_session_keyboard_executor(cls, session_id: str):
+        """Lấy keyboard executor cho session."""
+        session = cls._sessions.get(session_id)
+        return session.keyboard_executor if session else None    
+    
+
+    
+    
+
+   
 
     
     

@@ -257,6 +257,8 @@ class RelayHandler:
 
         need_clone = len(sessions) > 1
 
+        print(len(sessions))
+
         for session_id, session in sessions.items():
             receiver_id = (
                 session["controller_id"]

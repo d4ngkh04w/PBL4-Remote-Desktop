@@ -25,12 +25,18 @@ class RemoteWidget(QWidget):
     fit_to_screen_requested = pyqtSignal()  # Yêu cầu fit to screen
     actual_size_requested = pyqtSignal()  # Yêu cầu kích thước thật
     fullscreen_requested = pyqtSignal()  # Yêu cầu fullscreen
+    widget_focused = pyqtSignal()  # Widget được focus
+    widget_unfocused = pyqtSignal()  # Widget mất focus
+    key_event_occurred = pyqtSignal(object, str)  # Sự kiện phím (event, event_type)
 
     def __init__(self, session_id: str):
         super().__init__()
         self.session_id = session_id
         self.controller = RemoteWidgetController(self, self.session_id)
         self._cleanup_done = False
+
+        # Cho phép widget nhận focus để lắng nghe sự kiện bàn phím
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.init_ui()
 
@@ -82,6 +88,11 @@ class RemoteWidget(QWidget):
         self.image_label.setText("🖥️ Waiting for remote screen...")
         self.image_label.setMinimumSize(800, 600)
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # Cho phép image_label nhận focus và click events
+        self.image_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.image_label.mousePressEvent = self._image_label_mouse_press
+        
         self.scroll_area.setWidget(self.image_label)
         screen_layout.addWidget(self.scroll_area)
         parent_layout.addWidget(screen_group)
@@ -131,7 +142,7 @@ class RemoteWidget(QWidget):
     # --- Xử lý sự kiện UI ---
 
     def keyPressEvent(self, event):
-        """Xử lý phím tắt."""
+        """Xử lý phím tắt và gửi sự kiện cho controller."""
         if event.key() == Qt.Key.Key_Escape:
             if self.isFullScreen():
                 self.toggle_fullscreen_ui()
@@ -139,10 +150,39 @@ class RemoteWidget(QWidget):
                 self.close()
         elif event.key() == Qt.Key.Key_F11:
             self.fullscreen_requested.emit()
-        # Gửi sự kiện phím bấm cho controller xử lý (nếu cần)
-        # self.controller.send_keyboard_event(...)
         else:
+            # Gửi sự kiện phím cho controller xử lý
+            self.key_event_occurred.emit(event, "press")
             super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        """Xử lý sự kiện nhả phím."""
+        # Gửi sự kiện nhả phím cho controller xử lý
+        self.key_event_occurred.emit(event, "release")
+        super().keyReleaseEvent(event)
+
+    def focusInEvent(self, event):
+        """Widget được focus - bắt đầu lắng nghe bàn phím."""
+        super().focusInEvent(event)
+        self.widget_focused.emit()
+        logger.debug(f"RemoteWidget focused for session: {self.session_id}")
+
+    def focusOutEvent(self, event):
+        """Widget mất focus - dừng lắng nghe bàn phím."""
+        super().focusOutEvent(event)
+        self.widget_unfocused.emit()
+        logger.debug(f"RemoteWidget unfocused for session: {self.session_id}")
+
+    def mousePressEvent(self, event):
+        """Đảm bảo widget nhận focus khi click."""
+        self.setFocus()
+        super().mousePressEvent(event)
+
+    def _image_label_mouse_press(self, event):
+        """Xử lý click vào image label để focus widget."""
+        self.setFocus()
+        # Gọi mousePressEvent gốc của QLabel nếu cần
+        QLabel.mousePressEvent(self.image_label, event)
 
     def resizeEvent(self, event):
         """Xử lý sự kiện thay đổi kích thước cửa sổ."""
