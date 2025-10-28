@@ -2,8 +2,10 @@ import logging
 import sys
 import socket
 import ssl
+import os
 
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFontDatabase, QFont
 
 from client.controllers.main_window_controller import MainWindowController
 from client.gui.main_window import MainWindow
@@ -37,6 +39,31 @@ class RemoteDesktopClient:
         try:
             self.app = QApplication(sys.argv)
             self.app.setApplicationName("Remote Desktop Client")
+
+            # Load custom font from assets/fonts
+            font_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "assets",
+                "fonts",
+                "reverier-mono-regular.ttf",
+            )
+
+            if os.path.exists(font_path):
+                font_id = QFontDatabase.addApplicationFont(font_path)
+                if font_id != -1:
+                    font_families = QFontDatabase.applicationFontFamilies(font_id)
+                    if font_families:
+                        font_family = font_families[0]
+                        font = QFont(font_family, 10)  # 10 is the default size
+                        self.app.setFont(font)
+                        logger.info(f"Custom font '{font_family}' loaded successfully")
+                    else:
+                        logger.warning("Font family not found in the font file")
+                else:
+                    logger.warning(f"Failed to load font from {font_path}")
+            else:
+                logger.warning(f"Font file not found at {font_path}")
+
             logger.info("Qt application initialized successfully.")
             return True
         except Exception as e:

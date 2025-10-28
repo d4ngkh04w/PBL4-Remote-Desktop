@@ -184,3 +184,14 @@ class SessionManager:
         """Kiểm tra xem client có đang trong session không"""
         with cls.__lock:
             return session_id in cls.__client_to_sessions.get(client_id, set())
+
+    @classmethod
+    def is_client_connected(cls, controller_id: str, host_id: str) -> bool:
+        """Kiểm tra xem controller và host đã có session kết nối chưa"""
+        with cls.__lock:
+            controller_sessions = cls.__client_to_sessions.get(controller_id, set())
+            host_sessions = cls.__client_to_sessions.get(host_id, set())
+            common_sessions = controller_sessions.intersection(
+                host_sessions
+            )  # Lấy phần giao của hai tập
+            return len(common_sessions) > 0

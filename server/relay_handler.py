@@ -127,16 +127,26 @@ class RelayHandler:
             logger.warning(f"Sender {sender_id} not found")
             return
 
-        if not receiver_queue:
+        if SessionManager.is_client_connected(sender_id, receiver_id):
+            logger.warning(
+                f"Sender {sender_id} is already connected to receiver {receiver_id}"
+            )
+            response = ConnectionResponsePacket(
+                connection_status=Status.ALREADY_CONNECTED,
+                message="You are already connected to this host",
+            )
+            sender_queue.put(response)
+            return
+
+        if receiver_queue:
+            receiver_queue.put(packet)
+        else:
             logger.warning(f"Receiver {receiver_id} not found")
             response = ConnectionResponsePacket(
                 connection_status=Status.RECEIVER_NOT_FOUND,
                 message="Receiver not found",
             )
             sender_queue.put(response)
-            return
-        else:
-            receiver_queue.put(packet)
 
     @staticmethod
     def __handle_authentication_password(
@@ -256,8 +266,6 @@ class RelayHandler:
             return
 
         need_clone = len(sessions) > 1
-
-        print(len(sessions))
 
         for session_id, session in sessions.items():
             receiver_id = (

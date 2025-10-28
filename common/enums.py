@@ -7,7 +7,7 @@ class KeyBoardEventType(Enum):
     """
 
     PRESS = "PRESS"
-    RELEASE = "RELEASE" # release là nhả phím ra
+    RELEASE = "RELEASE"  # release là nhả phím ra
 
 
 class KeyBoardType(Enum):
@@ -72,6 +72,7 @@ class Status(Enum):
     RECEIVER_NOT_FOUND = "RECEIVER_NOT_FOUND"
     SENDER_NOT_FOUND = "SENDER_NOT_FOUND"
     INVALID_PASSWORD = "INVALID_PASSWORD"
+    ALREADY_CONNECTED = "ALREADY_CONNECTED"
     ERROR = "ERROR"
     SESSION_STARTED = "SESSION_STARTED"
     SESSION_ENDED = "SESSION_ENDED"
