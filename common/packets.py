@@ -152,6 +152,24 @@ class KeyboardPacket(BasePacket):
         return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_type={self.key_type}, key_name={self.key_name}, key_vk={self.key_vk})"
 
 
+class KeyboardCombinationPacket(BasePacket):
+    """
+    Gói tin tổ hợp phím (keyboard shortcuts)
+    """
+
+    def __init__(
+        self,
+        keys: list,  # Danh sách các phím trong tổ hợp
+        session_id: str | None = None,
+    ):
+        super().__init__(PacketType.KEYBOARD_COMBINATION)
+        self.session_id = session_id
+        self.keys = keys  # Ví dụ: [{'key_type': 'KEY', 'key_name': 'ctrl'}, {'key_type': 'KEYCODE', 'key_vk': 67}]
+
+    def __repr__(self):
+        return f"KeyboardCombinationPacket(type={self.packet_type}, keys={self.keys})"
+
+
 class MousePacket(BasePacket):
     """
     Gói tin chuột
@@ -181,6 +199,7 @@ Packet = Union[
     ConnectionRequestPacket,
     ConnectionResponsePacket,
     KeyboardPacket,
+    KeyboardCombinationPacket,
     MousePacket,
     AuthenticationPasswordPacket,
     SessionPacket,

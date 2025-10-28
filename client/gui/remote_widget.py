@@ -88,11 +88,11 @@ class RemoteWidget(QWidget):
         self.image_label.setText("🖥️ Waiting for remote screen...")
         self.image_label.setMinimumSize(800, 600)
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
+
         # Cho phép image_label nhận focus và click events
         self.image_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.image_label.mousePressEvent = self._image_label_mouse_press
-        
+
         self.scroll_area.setWidget(self.image_label)
         screen_layout.addWidget(self.scroll_area)
         parent_layout.addWidget(screen_group)
@@ -193,7 +193,7 @@ class RemoteWidget(QWidget):
     def closeEvent(self, event):
         """Xử lý sự kiện đóng cửa sổ."""
         if not self._cleanup_done:
-            # Gửi end session trước khi đóng widget
+            # Chỉ gửi disconnect request nếu chưa được cleanup từ bên ngoài
             self.disconnect_requested.emit(self.session_id)
             self.cleanup()
         event.accept()

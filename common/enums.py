@@ -7,7 +7,7 @@ class KeyBoardEventType(Enum):
     """
 
     PRESS = "PRESS"
-    RELEASE = "RELEASE"
+    RELEASE = "RELEASE" # release là nhả phím ra
 
 
 class KeyBoardType(Enum):
@@ -60,6 +60,7 @@ class PacketType(Enum):
     FILE_TRANSFER = 11
     VIDEO_STREAM = 12
     VIDEO_CONFIG = 13
+    KEYBOARD_COMBINATION = 14
 
 
 class Status(Enum):

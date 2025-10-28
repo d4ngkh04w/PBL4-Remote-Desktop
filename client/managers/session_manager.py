@@ -13,9 +13,9 @@ class SessionResources:
 
     role: str
     decoder: Optional[Any] = None
-    widget: Optional[Any] = None    
-    keyboard_executor: Optional[Any] = None  # KeyboardExecutorService cho host
-    
+    widget: Optional[Any] = None
+
+
 class SessionManager:
     """Quản lý các phiên làm việc của client (controller / host)."""
 
@@ -28,24 +28,24 @@ class SessionManager:
 
         try:
             if role == "controller":
-                from client.controllers.main_window_controller import main_window_controller 
+                from client.controllers.main_window_controller import (
+                    main_window_controller,
+                )
+
                 main_window_controller.widget_creation_requested.emit(session_id)
             elif role == "host":
                 from client.services.screen_share_service import screen_share_service
+
                 screen_share_service.add_session(session_id)
-                from client.services.keyboard_executor_service import KeyboardExecutorService
-                keyboard_executor = KeyboardExecutorService()
-                keyboard_executor.start()
-                cls._sessions[session_id].keyboard_executor = keyboard_executor
             else:
                 logger.warning(f"Unknown role: {role} for session: {session_id}")
 
         except Exception as e:
             logger.error(f"Error creating session {session_id}: {e}", exc_info=True)
 
-    #---------
-    #Xử lý dữ liệu liên quan đến session
-    #---------
+    # ---------
+    # Xử lý dữ liệu liên quan đến session
+    # ---------
 
     @classmethod
     def handle_config_data(
@@ -80,7 +80,7 @@ class SessionManager:
             logger.error(
                 f"Error handling config data for session {session_id}: {e}",
                 exc_info=True,
-            )       
+            )
 
     @classmethod
     def handle_video_data(cls, session_id: str, video_data: bytes):
@@ -129,9 +129,9 @@ class SessionManager:
                 exc_info=True,
             )
 
-    #---------
-    #Xử lý khi session kết thúc
-    #---------
+    # ---------
+    # Xử lý khi session kết thúc
+    # ---------
     @classmethod
     def remove_widget_session(cls, session_id: str):
         """Xóa session controller và dọn dẹp tài nguyên."""
@@ -142,6 +142,7 @@ class SessionManager:
             del cls._sessions[session_id]
             from client.handlers.send_handler import SendHandler
 
+            logger.info(f"Send end session packet for: {session_id}")
             SendHandler.send_end_session_packet(session_id)
         else:
             logger.warning(f"Attempted to remove non-controller session: {session_id}")
@@ -150,27 +151,41 @@ class SessionManager:
     def remove_session(cls, session_id: str, send_end_packet: bool = True):
         """Xóa phiên làm việc và dọn dẹp tài nguyên."""
         if session_id in cls._sessions:
-            if cls._sessions[session_id].role == "controller":
-                widget = cls._sessions[session_id].widget
-                if widget and hasattr(widget, "close"):
-                    widget.close()
-                decoder = cls._sessions[session_id].decoder
-                if decoder and hasattr(decoder, "close"):
-                    decoder.close()
-            elif cls._sessions[session_id].role == "host":
+            session = cls._sessions[session_id]
+
+            if session.role == "controller":
+                # Cleanup decoder trước
+                if session.decoder and hasattr(session.decoder, "close"):
+                    session.decoder.close()
+
+                # Đóng widget sau - widget sẽ tự cleanup controller
+                if session.widget and hasattr(session.widget, "close"):
+                    # Đặt flag để tránh gửi end packet khi đóng widget
+                    if hasattr(session.widget, "_cleanup_done"):
+                        session.widget._cleanup_done = True
+                    session.widget.close()
+
+            elif session.role == "host":
                 from client.services.screen_share_service import screen_share_service
-                screen_share_service.remove_session(session_id)                
+
+                screen_share_service.remove_session(session_id)
             else:
                 logger.warning(
                     f"Attempted to remove session with unknown role: {session_id}"
                 )
 
             del cls._sessions[session_id]
+
+            # Chỉ gửi end packet khi được yêu cầu (chủ động disconnect)
             if send_end_packet:
                 from client.handlers.send_handler import SendHandler
+
+                logger.info(f"Sending end session packet for: {session_id}")
                 SendHandler.send_end_session_packet(session_id)
+            else:
+                logger.info(f"Session ended by remote for: {session_id}")
         else:
-            logger.warning(f"Attempted to remove non-existent session: {session_id}")  
+            logger.warning(f"Attempted to remove non-existent session: {session_id}")
 
     @classmethod
     def cleanup_all_sessions(cls):
@@ -178,25 +193,5 @@ class SessionManager:
         session_ids = list(cls._sessions.keys())
         for session_id in session_ids:
             cls.remove_session(session_id, send_end_packet=True)
-        logger.info("All sessions cleaned up")      
 
-    # ---------------------------
-    # Quản lý Keyboard Executor
-    # ---------------------------
-
-    @classmethod
-    def get_session_keyboard_executor(cls, session_id: str):
-        """Lấy keyboard executor cho session."""
-        session = cls._sessions.get(session_id)
-        return session.keyboard_executor if session else None    
-    
-
-    
-    
-
-   
-
-    
-    
-
-    
+        logger.info("All sessions cleaned up")

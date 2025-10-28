@@ -1,11 +1,9 @@
 import logging
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
-from PyQt5.QtGui import QPixmap, QKeyEvent
+from PyQt5.QtGui import QPixmap
 
 from client.services.keyboard_listener_service import KeyboardListenerService
-from client.handlers.send_handler import SendHandler
-from common.enums import KeyBoardEventType, KeyBoardType
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +32,8 @@ class RemoteWidgetController(QObject):
         self._running = False
         self._cleanup_done = False
 
+        # Keyboard listener riêng cho widget này
         self.keyboard_listener = KeyboardListenerService()
-        self._keyboard_listening = False
 
         self._connect_signals()
 
@@ -56,9 +54,8 @@ class RemoteWidgetController(QObject):
         self.remote_widget.fit_to_screen_requested.connect(self.fit_to_screen)
         self.remote_widget.actual_size_requested.connect(self.actual_size)
         self.remote_widget.fullscreen_requested.connect(self.toggle_fullscreen.emit)
-        self.remote_widget.widget_focused.connect(self.start_keyboard_listening)
-        self.remote_widget.widget_unfocused.connect(self.stop_keyboard_listening)
-        self.remote_widget.key_event_occurred.connect(self.handle_key_event)
+        self.remote_widget.widget_focused.connect(self.on_widget_focused)
+        self.remote_widget.widget_unfocused.connect(self.on_widget_unfocused)
 
     def handle_video_config_received(
         self, width: int, height: int, fps: int, codec: str
@@ -138,131 +135,41 @@ class RemoteWidgetController(QObject):
     @pyqtSlot(str)
     def handle_disconnect_request(self, session_id: str):
         """Xử lý yêu cầu ngắt kết nối từ widget."""
-        if session_id == self.session_id:            
+        if session_id == self.session_id and not self._cleanup_done:
             from client.managers.session_manager import SessionManager
-            SessionManager.remove_widget_session(self.session_id)            
+
+            SessionManager.remove_widget_session(self.session_id)
             self.cleanup()
+
+    @pyqtSlot()
+    def on_widget_focused(self):
+        """Khi widget được focus - bắt đầu keyboard listener."""
+        if self._running and not self.keyboard_listener.is_running():
+            self.keyboard_listener.start()
+            logger.debug(f"Started keyboard listener for session: {self.session_id}")
+
+    @pyqtSlot()
+    def on_widget_unfocused(self):
+        """Khi widget mất focus - dừng keyboard listener."""
+        if self.keyboard_listener.is_running():
+            self.keyboard_listener.stop()
+            logger.debug(f"Stopped keyboard listener for session: {self.session_id}")
 
     def start(self):
         if self._running:
             return
         self._running = True
+        # Keyboard listener sẽ được start khi widget focus
         logger.debug(f"RemoteWidgetController started for session: {self.session_id}")
 
     def stop(self):
         if not self._running:
             return
         self._running = False
-        # Dừng lắng nghe sự kiện bàn phím khi stop
-        self.keyboard_listener.stop()
+        # Dừng keyboard listener nếu đang chạy
+        if self.keyboard_listener.is_running():
+            self.keyboard_listener.stop()
         logger.info(f"RemoteWidgetController stopped for session: {self.session_id}")
-    
-    def start_keyboard_listening(self):
-        """Bắt đầu lắng nghe bàn phím khi widget được focus."""
-        if self._running and not self._keyboard_listening:
-            self._keyboard_listening = True
-            logger.debug(f"Keyboard listening started for session: {self.session_id}")
-    
-    def stop_keyboard_listening(self):
-        """Dừng lắng nghe bàn phím khi widget mất focus."""
-        if self._keyboard_listening:
-            self._keyboard_listening = False
-            logger.debug(f"Keyboard listening stopped for session: {self.session_id}")
-
-    @pyqtSlot(object, str)
-    def handle_key_event(self, qt_event: QKeyEvent, event_type: str):
-        """Xử lý sự kiện phím từ widget."""
-        if not self._keyboard_listening:
-            return
-            
-        try:
-            # Chuyển đổi Qt key event thành format của ứng dụng
-            key_name = None
-            key_vk = None
-            key_type = None
-            
-            # Lấy thông tin từ QKeyEvent
-            qt_key = qt_event.key()
-            qt_text = qt_event.text()
-            
-            # Kiểm tra xem có phải là ký tự in được không
-            if qt_text and qt_text.isprintable() and len(qt_text) == 1:
-                # Phím ký tự (a, b, 1, 2, ...)
-                key_type = KeyBoardType.KEYCODE
-                key_vk = ord(qt_text)
-                logger.debug(f"Character key: text={qt_text}, vk={key_vk}")
-            else:
-                # Phím đặc biệt, chuyển đổi Qt key sang tên phím
-                key_type = KeyBoardType.KEY
-                key_name = self._qt_key_to_name(qt_key)
-                logger.debug(f"Special key: qt_key={qt_key}, name={key_name}")
-            
-            # Chuyển đổi event type
-            if event_type == "press":
-                event_type_enum = KeyBoardEventType.PRESS
-            elif event_type == "release":
-                event_type_enum = KeyBoardEventType.RELEASE
-            else:
-                logger.warning(f"Unknown event type: {event_type}")
-                return
-            
-            # Gửi gói tin bàn phím
-            SendHandler.send_keyboard_packet(
-                session_id=self.session_id,
-                event_type=event_type_enum,
-                key_type=key_type,
-                key_name=key_name,
-                key_vk=key_vk,
-            )
-            
-        except Exception as e:
-            logger.error(f"Error handling key event: {e}", exc_info=True)
-
-    def _qt_key_to_name(self, qt_key):
-        """Chuyển đổi Qt key code sang tên phím."""
-        # Mapping các phím đặc biệt từ Qt sang tên phím chuẩn
-        key_mapping = {
-            Qt.Key.Key_Alt: "alt",
-            Qt.Key.Key_AltGr: "alt_gr", 
-            Qt.Key.Key_Backspace: "backspace",
-            Qt.Key.Key_CapsLock: "caps_lock",
-            Qt.Key.Key_Control: "ctrl",
-            Qt.Key.Key_Delete: "delete",
-            Qt.Key.Key_Down: "down",
-            Qt.Key.Key_End: "end",
-            Qt.Key.Key_Return: "enter",
-            Qt.Key.Key_Enter: "enter",
-            Qt.Key.Key_Escape: "esc",
-            Qt.Key.Key_F1: "f1",
-            Qt.Key.Key_F2: "f2",
-            Qt.Key.Key_F3: "f3",
-            Qt.Key.Key_F4: "f4",
-            Qt.Key.Key_F5: "f5",
-            Qt.Key.Key_F6: "f6",
-            Qt.Key.Key_F7: "f7",
-            Qt.Key.Key_F8: "f8",
-            Qt.Key.Key_F9: "f9",
-            Qt.Key.Key_F10: "f10",
-            Qt.Key.Key_F11: "f11",
-            Qt.Key.Key_F12: "f12",
-            Qt.Key.Key_Home: "home",
-            Qt.Key.Key_Left: "left",
-            Qt.Key.Key_PageDown: "page_down",
-            Qt.Key.Key_PageUp: "page_up",
-            Qt.Key.Key_Right: "right",
-            Qt.Key.Key_Shift: "shift",
-            Qt.Key.Key_Space: "space",
-            Qt.Key.Key_Tab: "tab",
-            Qt.Key.Key_Up: "up",
-            Qt.Key.Key_Insert: "insert",
-            Qt.Key.Key_Menu: "menu",
-            Qt.Key.Key_NumLock: "num_lock",
-            Qt.Key.Key_Pause: "pause",
-            Qt.Key.Key_Print: "print_screen",
-            Qt.Key.Key_ScrollLock: "scroll_lock",
-        }
-        
-        return key_mapping.get(qt_key, f"unknown_{qt_key}")
 
     def cleanup(self):
         """Dọn dẹp tài nguyên của controller."""

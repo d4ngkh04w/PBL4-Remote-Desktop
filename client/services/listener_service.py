@@ -36,7 +36,7 @@ class ListenerService:
                 except socket.timeout:
                     continue
                 except Exception as e:
-                    logger.error(f"Error in listener worker - {e}")
+                    logger.error(f"Error in listener worker - {e}", exc_info=True)
 
     @classmethod
     def shutdown(cls):

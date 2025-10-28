@@ -9,6 +9,7 @@ from common.packets import (
     ConnectionRequestPacket,
     ConnectionResponsePacket,
     KeyboardPacket,
+    KeyboardCombinationPacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReceiveHandler:
+
     @classmethod
     def handle_packet(cls, packet: Packet):
         """Phân loại và xử lý packet nhận được."""
@@ -31,6 +33,7 @@ class ReceiveHandler:
             VideoConfigPacket: cls.__handle_video_config_packet,
             VideoStreamPacket: cls.__handle_video_stream_packet,
             KeyboardPacket: cls.__handle_keyboard_packet,  # Host nhận keyboard events
+            KeyboardCombinationPacket: cls.__handle_keyboard_combination_packet,  # Host nhận keyboard combinations
         }
         handler = packet_handlers.get(type(packet))
         if handler:
@@ -116,7 +119,7 @@ class ReceiveHandler:
         # Nếu session kết thúc, dọn dẹp
         elif packet.status == Status.SESSION_ENDED:
             logger.debug(f"Received session ended for: {packet.session_id}")
-            SessionManager.remove_session(packet.session_id)
+            SessionManager.remove_session(packet.session_id, False)
 
     # ----------------------------
     # Controller
@@ -146,7 +149,7 @@ class ReceiveHandler:
             packet.fps,
             packet.codec,
         )
-       
+
     @staticmethod
     def __handle_video_stream_packet(packet: VideoStreamPacket):
         """
@@ -159,7 +162,7 @@ class ReceiveHandler:
             logger.error("Received VideoStreamPacket with empty fields.")
             return
 
-        SessionManager.handle_video_data(packet.session_id, packet.video_data)    
+        SessionManager.handle_video_data(packet.session_id, packet.video_data)
 
     # ----------------------------
     # Host
@@ -194,25 +197,35 @@ class ReceiveHandler:
     def __handle_keyboard_packet(packet: KeyboardPacket):
         """Xử lý KeyboardPacket - thực thi sự kiện bàn phím nhận được"""
         try:
-            if not hasattr(packet, "session_id") or not hasattr(packet, "event_type"):
+            if (
+                not hasattr(packet, "event_type")
+                or not hasattr(packet, "key_name")
+                or not hasattr(packet, "key_vk")
+                or not hasattr(packet, "key_type")
+            ):
                 logger.error("Invalid keyboard packet")
                 return
 
-            if not packet.session_id:
-                logger.error("Received KeyboardPacket with empty session_id")
-                return
-
-            # Lấy keyboard executor từ session
-            session = SessionManager.get_session_keyboard_executor(packet.session_id)
-            if not session:
-                logger.warning(
-                    f"No keyboard executor found for session: {packet.session_id}"
-                )
-                return
-
-            # Thực thi sự kiện bàn phím
-            session.execute_keyboard_packet(packet)
-            logger.debug(f"Executed keyboard packet for session: {packet.session_id}")
+            # Sử dụng screen share service để execute keyboard packet
+            from client.services.screen_share_service import screen_share_service
+            screen_share_service.execute_keyboard_packet(packet)
 
         except Exception as e:
             logger.error(f"Error handling keyboard packet: {e}", exc_info=True)
+
+    @staticmethod
+    def __handle_keyboard_combination_packet(packet: KeyboardCombinationPacket):
+        """Xử lý KeyboardCombinationPacket - thực thi tổ hợp phím nhận được"""
+        try:
+            if not hasattr(packet, "keys"):
+                logger.error("Invalid keyboard combination packet")
+                return
+
+            # Sử dụng screen share service để execute keyboard combination
+            from client.services.screen_share_service import screen_share_service
+            screen_share_service.execute_keyboard_combination(packet.keys)
+
+        except Exception as e:
+            logger.error(
+                f"Error handling keyboard combination packet: {e}", exc_info=True
+            )
