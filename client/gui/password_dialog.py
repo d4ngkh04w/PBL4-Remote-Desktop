@@ -1,7 +1,3 @@
-"""
-Dialog để nhập mật khẩu tự đặt với xác nhận
-"""
-
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,

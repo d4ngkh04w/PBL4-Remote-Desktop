@@ -9,28 +9,28 @@ logger = logging.getLogger(__name__)
 
 
 class SenderService:
-    _queue = Queue()
-    _sending_thread = None
-    _shutdown_event = threading.Event()
-    _socket = None
+    __queue = Queue()
+    __sending_thread = None
+    __shutdown_event = threading.Event()
+    __socket = None
 
     @classmethod
     def initialize(cls, sock: socket.socket):
         """Khởi tạo dịch vụ gửi dữ liệu với socket đã kết nối."""
-        cls._socket = sock
-        cls._shutdown_event.clear()
-        cls._sending_thread = threading.Thread(target=cls._send_worker, daemon=True)
-        cls._sending_thread.start()
+        cls.__socket = sock
+        cls.__shutdown_event.clear()
+        cls.__sending_thread = threading.Thread(target=cls._send_worker, daemon=True)
+        cls.__sending_thread.start()
         logger.info("SenderService initialized and sending thread started")
 
     @classmethod
     def _send_worker(cls):
         """Worker thread để gửi dữ liệu từ hàng đợi."""
-        while not cls._shutdown_event.is_set():
+        while not cls.__shutdown_event.is_set():
             try:
-                packet = cls._queue.get(timeout=1)
-                if cls._socket:
-                    Protocol.send_packet(cls._socket, packet)
+                packet = cls.__queue.get(timeout=1)
+                if cls.__socket:
+                    Protocol.send_packet(cls.__socket, packet)
                 else:
                     logger.error("Socket is None, cannot send packet")
             except Empty:
@@ -41,17 +41,17 @@ class SenderService:
     @classmethod
     def shutdown(cls):
         """Dọn dẹp tài nguyên khi đóng dịch vụ."""
-        cls._shutdown_event.set()
-        if cls._sending_thread:
-            cls._sending_thread.join()
-        cls._socket = None
+        cls.__shutdown_event.set()
+        if cls.__sending_thread:
+            cls.__sending_thread.join()
+        cls.__socket = None
 
     @classmethod
     def send_packet(cls, packet: Packet):
         """Đưa dữ liệu vào hàng đợi để gửi."""
-        if cls._shutdown_event.is_set():
+        if cls.__shutdown_event.is_set():
             return
-        if cls._socket:
-            cls._queue.put(packet)
+        if cls.__socket:
+            cls.__queue.put(packet)
         else:
             logger.warning("Socket is not initialized, cannot send data")

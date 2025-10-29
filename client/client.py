@@ -11,6 +11,7 @@ from client.controllers.main_window_controller import MainWindowController
 from client.gui.main_window import MainWindow
 from client.services.listener_service import ListenerService
 from client.services.sender_service import SenderService
+from client.services.keyboard_executor_service import KeyboardExecutorService
 
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,10 @@ class RemoteDesktopClient:
             if self.socket:
                 ListenerService.initialize(self.socket)
                 SenderService.initialize(self.socket)
+
+                # Khởi tạo KeyboardExecutorService (cho máy host)
+                KeyboardExecutorService.initialize()
+
                 logger.debug("Listener and Sender services initialized successfully.")
                 return True
             else:
@@ -183,6 +188,7 @@ class RemoteDesktopClient:
             # Shutdown services
             ListenerService.shutdown()
             SenderService.shutdown()
+            KeyboardExecutorService.shutdown()
 
             # Close socket
             if self.socket:

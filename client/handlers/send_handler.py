@@ -4,7 +4,6 @@ from common.packets import (
     AuthenticationPasswordPacket,
     ConnectionRequestPacket,
     KeyboardPacket,
-    KeyboardCombinationPacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
@@ -81,29 +80,15 @@ class SendHandler:
         cls,
         event_type: KeyBoardEventType,
         key_type: KeyBoardType,
-        key_name: str | None = None,
-        key_vk: int | None = None,
-        session_id: str | None = None,
+        key_value: str | int | list[str],
+        session_id: str,
     ):
         """Gửi KeyboardPacket"""
+
         keyboard_packet = KeyboardPacket(
-            session_id=session_id,
             event_type=event_type,
             key_type=key_type,
-            key_name=key_name,
-            key_vk=key_vk,
+            key_value=key_value,
+            session_id=session_id,
         )
         SenderService.send_packet(keyboard_packet)
-
-    @classmethod
-    def send_keyboard_combination_packet(
-        cls,
-        keys: list,
-        session_id: str | None = None,
-    ):
-        """Gửi KeyboardCombinationPacket"""
-        combination_packet = KeyboardCombinationPacket(
-            session_id=session_id,
-            keys=keys,
-        )
-        SenderService.send_packet(combination_packet)

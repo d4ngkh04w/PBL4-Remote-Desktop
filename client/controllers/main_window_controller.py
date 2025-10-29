@@ -1,4 +1,5 @@
 import logging
+
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from client.managers.client_manager import ClientManager
@@ -94,6 +95,7 @@ class MainWindowController(QObject):
 
         # Logic nghiệp vụ thành công, gửi yêu cầu và cập nhật UI
         from client.handlers.send_handler import SendHandler
+
         SendHandler.send_connection_request_packet(host_id, host_pass)
 
         self.connect_button_state_changed.emit(False, "🔄 Connecting...")
@@ -167,6 +169,7 @@ class MainWindowController(QObject):
         try:
             # Kết thúc tất cả sessions trước khi dọn dẹp
             from client.managers.session_manager import SessionManager
+
             SessionManager.cleanup_all_sessions()
 
             self.stop()

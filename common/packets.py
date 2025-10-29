@@ -1,5 +1,3 @@
-from typing import Union
-
 from common.enums import (
     PacketType,
     KeyBoardEventType,
@@ -137,37 +135,17 @@ class KeyboardPacket(BasePacket):
         self,
         event_type: KeyBoardEventType,
         key_type: KeyBoardType,
-        key_name: str | None = None,  # Tên của phím đặc biệt, ví dụ: 'ctrl_l', 'shift'
-        key_vk: int | None = None,  # Mã phím ảo (Virtual-key code) của phím ký tự
+        key_value: str | int | list[str],
         session_id: str | None = None,
     ):
         super().__init__(PacketType.KEYBOARD)
         self.session_id = session_id
         self.event_type = event_type
         self.key_type = key_type
-        self.key_name = key_name
-        self.key_vk = key_vk
+        self.key_value = key_value
 
     def __repr__(self):
-        return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_type={self.key_type}, key_name={self.key_name}, key_vk={self.key_vk})"
-
-
-class KeyboardCombinationPacket(BasePacket):
-    """
-    Gói tin tổ hợp phím (keyboard shortcuts)
-    """
-
-    def __init__(
-        self,
-        keys: list,  # Danh sách các phím trong tổ hợp
-        session_id: str | None = None,
-    ):
-        super().__init__(PacketType.KEYBOARD_COMBINATION)
-        self.session_id = session_id
-        self.keys = keys  # Ví dụ: [{'key_type': 'KEY', 'key_name': 'ctrl'}, {'key_type': 'KEYCODE', 'key_vk': 67}]
-
-    def __repr__(self):
-        return f"KeyboardCombinationPacket(type={self.packet_type}, keys={self.keys})"
+        return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_type={self.key_type}, key_value={self.key_value})"
 
 
 class MousePacket(BasePacket):
@@ -194,15 +172,14 @@ class MousePacket(BasePacket):
         return f"MousePacket(type={self.packet_type}, event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
-Packet = Union[
-    AssignIdPacket,
-    ConnectionRequestPacket,
-    ConnectionResponsePacket,
-    KeyboardPacket,
-    KeyboardCombinationPacket,
-    MousePacket,
-    AuthenticationPasswordPacket,
-    SessionPacket,
-    VideoStreamPacket,
-    VideoConfigPacket,
-]
+Packet = (
+    AssignIdPacket
+    | ConnectionRequestPacket
+    | ConnectionResponsePacket
+    | KeyboardPacket
+    | MousePacket
+    | AuthenticationPasswordPacket
+    | SessionPacket
+    | VideoStreamPacket
+    | VideoConfigPacket
+)

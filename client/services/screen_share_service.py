@@ -13,6 +13,7 @@ from client.services.performance_monitor import performance_monitor
 
 logger = logging.getLogger(__name__)
 
+
 class ScreenShareService:
     """
     Screen sharing service - capture 1 lần, gửi cho nhiều sessions.
@@ -61,10 +62,10 @@ class ScreenShareService:
         """Thêm session cần stream tới và gửi config ngay lập tức."""
         with self._sessions_lock:
             self._active_sessions.add(session_id)
-            
+
             if not self._encoder:
                 self._initialize_encoder()
-           
+
             self._send_config_to_session(session_id)
 
             if not self._is_running.is_set():
@@ -90,7 +91,7 @@ class ScreenShareService:
                     "width": width,
                     "height": height,
                 }
-                
+
                 img = capture_frame(
                     sct_instance=sct,
                     monitor=monitor,
@@ -150,13 +151,6 @@ class ScreenShareService:
             logger.warning("Centralized streaming already running")
             return
 
-        # Khởi tạo và start keyboard executor khi bắt đầu screen sharing
-        if not self._keyboard_executor:
-            from client.services.keyboard_executor_service import KeyboardExecutorService
-            self._keyboard_executor = KeyboardExecutorService()
-            self._keyboard_executor.start()
-            logger.info("Started keyboard executor for screen sharing")
-
         self._is_running.set()
         self._streaming_thread = threading.Thread(
             target=self._stream_worker, daemon=True, name="CentralizedScreenStreamer"
@@ -179,29 +173,7 @@ class ScreenShareService:
             self._encoder = None
             self._screen_config = None
 
-        # Cleanup keyboard executor khi dừng streaming
-        if self._keyboard_executor:
-            self._keyboard_executor.stop()
-            self._keyboard_executor = None
-            logger.info("Stopped keyboard executor")
-
         logger.info("Centralized screen streaming stopped")
-
-    def execute_keyboard_packet(self, packet):
-        """Execute keyboard packet nếu keyboard executor đang chạy."""
-        if self._keyboard_executor and self._keyboard_executor.is_running():
-            self._keyboard_executor.execute_keyboard_packet(packet)
-            logger.debug("Executed keyboard packet via screen share service")
-        else:
-            logger.warning("Keyboard executor not available, cannot execute keyboard packet")
-
-    def execute_keyboard_combination(self, keys):
-        """Execute keyboard combination nếu keyboard executor đang chạy."""
-        if self._keyboard_executor and self._keyboard_executor.is_running():
-            self._keyboard_executor.execute_combination(keys)
-            logger.debug("Executed keyboard combination via screen share service")
-        else:
-            logger.warning("Keyboard executor not available, cannot execute keyboard combination")
 
     def _stream_worker(self):
         """Thread worker: capture 1 lần → encode 1 lần → gửi cho tất cả sessions."""
@@ -279,6 +251,7 @@ class ScreenShareService:
 
             except Exception as e:
                 logger.error(f"Centralized stream error: {e}", exc_info=True)
+
 
 # Global instance
 screen_share_service = ScreenShareService()

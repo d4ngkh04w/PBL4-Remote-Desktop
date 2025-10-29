@@ -4,18 +4,17 @@ from common.enums import Status
 from client.managers.client_manager import ClientManager
 from client.controllers.main_window_controller import main_window_controller
 from client.managers.session_manager import SessionManager
+from client.services.keyboard_executor_service import KeyboardExecutorService
 from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
     KeyboardPacket,
-    KeyboardCombinationPacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
     Packet,
 )
-from common.h264 import H264Decoder
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +31,7 @@ class ReceiveHandler:
             ConnectionRequestPacket: cls.__handle_connection_request_packet,  # Host nhận
             VideoConfigPacket: cls.__handle_video_config_packet,
             VideoStreamPacket: cls.__handle_video_stream_packet,
-            KeyboardPacket: cls.__handle_keyboard_packet,  # Host nhận keyboard events
-            KeyboardCombinationPacket: cls.__handle_keyboard_combination_packet,  # Host nhận keyboard combinations
+            KeyboardPacket: cls.__handle_keyboard_packet,
         }
         handler = packet_handlers.get(type(packet))
         if handler:
@@ -66,6 +64,14 @@ class ReceiveHandler:
             )
             main_window_controller.on_ui_update_status(
                 "Connection rejected: Invalid password."
+            )
+
+        elif packet.connection_status == Status.ALREADY_CONNECTED:
+            main_window_controller.on_ui_show_notification(
+                "Connection rejected: Already connected to this host.", "error"
+            )
+            main_window_controller.on_ui_update_status(
+                "Connection rejected: Already connected to this host."
             )
 
         elif packet.connection_status == Status.SERVER_FULL:
@@ -117,7 +123,10 @@ class ReceiveHandler:
             SessionManager.create_session(packet.session_id, packet.role)
 
         # Nếu session kết thúc, dọn dẹp
-        elif packet.status == Status.SESSION_ENDED:
+        elif (
+            packet.status == Status.SESSION_ENDED
+            or packet.status == Status.SESSION_TIMEOUT
+        ):
             logger.debug(f"Received session ended for: {packet.session_id}")
             SessionManager.remove_session(packet.session_id, False)
 
@@ -195,37 +204,21 @@ class ReceiveHandler:
 
     @staticmethod
     def __handle_keyboard_packet(packet: KeyboardPacket):
-        """Xử lý KeyboardPacket - thực thi sự kiện bàn phím nhận được"""
-        try:
-            if (
-                not hasattr(packet, "event_type")
-                or not hasattr(packet, "key_name")
-                or not hasattr(packet, "key_vk")
-                or not hasattr(packet, "key_type")
-            ):
-                logger.error("Invalid keyboard packet")
-                return
+        """Xử lý KeyboardPacket - thực thi sự kiện bàn phím trên máy host"""
+        if (
+            not hasattr(packet, "event_type")
+            or not hasattr(packet, "key_type")
+            or not hasattr(packet, "key_value")
+        ):
+            logger.error("Invalid keyboard packet")
+            return
 
-            # Sử dụng screen share service để execute keyboard packet
-            from client.services.screen_share_service import screen_share_service
-            screen_share_service.execute_keyboard_packet(packet)
+        if not packet.event_type or not packet.key_type or packet.key_value is None:
+            logger.error("Received KeyboardPacket with empty fields.")
+            return
 
-        except Exception as e:
-            logger.error(f"Error handling keyboard packet: {e}", exc_info=True)
-
-    @staticmethod
-    def __handle_keyboard_combination_packet(packet: KeyboardCombinationPacket):
-        """Xử lý KeyboardCombinationPacket - thực thi tổ hợp phím nhận được"""
-        try:
-            if not hasattr(packet, "keys"):
-                logger.error("Invalid keyboard combination packet")
-                return
-
-            # Sử dụng screen share service để execute keyboard combination
-            from client.services.screen_share_service import screen_share_service
-            screen_share_service.execute_keyboard_combination(packet.keys)
-
-        except Exception as e:
-            logger.error(
-                f"Error handling keyboard combination packet: {e}", exc_info=True
-            )
+        # Thực thi sự kiện bàn phím
+        KeyboardExecutorService.execute_keyboard_event(packet)
+        logger.debug(
+            f"Executed keyboard event: {packet.event_type.value} - {packet.key_type.value} - {packet.key_value}"
+        )

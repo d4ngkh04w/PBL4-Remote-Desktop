@@ -32,9 +32,6 @@ class RemoteWidgetController(QObject):
         self._running = False
         self._cleanup_done = False
 
-        # Keyboard listener riêng cho widget này
-        self.keyboard_listener = KeyboardListenerService()
-
         self._connect_signals()
 
         logger.info("RemoteWidgetController initialized")
@@ -56,6 +53,7 @@ class RemoteWidgetController(QObject):
         self.remote_widget.fullscreen_requested.connect(self.toggle_fullscreen.emit)
         self.remote_widget.widget_focused.connect(self.on_widget_focused)
         self.remote_widget.widget_unfocused.connect(self.on_widget_unfocused)
+        self.remote_widget.key_event_occurred.connect(self.on_key_event)
 
     def handle_video_config_received(
         self, width: int, height: int, fps: int, codec: str
@@ -143,17 +141,20 @@ class RemoteWidgetController(QObject):
 
     @pyqtSlot()
     def on_widget_focused(self):
-        """Khi widget được focus - bắt đầu keyboard listener."""
-        if self._running and not self.keyboard_listener.is_running():
-            self.keyboard_listener.start()
-            logger.debug(f"Started keyboard listener for session: {self.session_id}")
+        """Xử lý khi widget được focus - bắt đầu lắng nghe bàn phím."""
+        KeyboardListenerService.start_listening(self.session_id)
+        logger.debug(f"Started keyboard listening for session: {self.session_id}")
 
     @pyqtSlot()
     def on_widget_unfocused(self):
-        """Khi widget mất focus - dừng keyboard listener."""
-        if self.keyboard_listener.is_running():
-            self.keyboard_listener.stop()
-            logger.debug(f"Stopped keyboard listener for session: {self.session_id}")
+        """Xử lý khi widget mất focus - dừng lắng nghe bàn phím."""
+        KeyboardListenerService.stop_listening(self.session_id)
+        logger.debug(f"Stopped keyboard listening for session: {self.session_id}")
+
+    @pyqtSlot(object, str)
+    def on_key_event(self, event, event_type: str):
+        """Xử lý sự kiện bàn phím từ widget."""
+        KeyboardListenerService.handle_key_event(event, event_type, self.session_id)
 
     def start(self):
         if self._running:
@@ -166,9 +167,7 @@ class RemoteWidgetController(QObject):
         if not self._running:
             return
         self._running = False
-        # Dừng keyboard listener nếu đang chạy
-        if self.keyboard_listener.is_running():
-            self.keyboard_listener.stop()
+
         logger.info(f"RemoteWidgetController stopped for session: {self.session_id}")
 
     def cleanup(self):

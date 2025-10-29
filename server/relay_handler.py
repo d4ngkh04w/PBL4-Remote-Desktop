@@ -45,7 +45,7 @@ class RelayHandler:
         """Xử lý và chuyển tiếp gói tin sử dụng thread pool"""
         try:
             if RelayHandler.__shutdown_event.is_set():
-                logger.warning("Server is shutting down. Dropping packet.")
+                logger.warning("Server is shutting down. Dropping packet")
                 return
             if isinstance(
                 packet,
@@ -199,7 +199,7 @@ class RelayHandler:
         session_id = packet.session_id
         session_info = SessionManager.get_session(session_id)
         if not session_info:
-            logger.warning(f"Session {session_id} not found. Dropping packet.")
+            logger.warning(f"Session {session_id} not found. Dropping packet")
             return
 
         if packet.status == Status.SESSION_ENDED:
@@ -231,7 +231,7 @@ class RelayHandler:
         def __send_to_receiver(receiver_id: str, pkt):
             receiver_queue = ClientManager.get_client_queue(str(receiver_id))
             if not receiver_queue:
-                logger.warning(f"Receiver {receiver_id} not found. Dropping packet.")
+                logger.warning(f"Receiver {receiver_id} not found. Dropping packet")
                 return False
 
             try:
@@ -248,7 +248,7 @@ class RelayHandler:
             session_info = SessionManager.get_session(packet.session_id)
             if not session_info:
                 logger.warning(
-                    f"Session {packet.session_id} not found. Dropping packet."
+                    f"Session {packet.session_id} not found. Dropping packet"
                 )
                 return
 

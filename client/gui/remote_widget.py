@@ -1,4 +1,3 @@
-# remote_widget.py
 import logging
 
 from PyQt5.QtWidgets import (
@@ -11,7 +10,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QSizePolicy,
 )
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 
 from client.controllers.remote_widget_controller import RemoteWidgetController

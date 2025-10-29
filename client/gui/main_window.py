@@ -1,3 +1,5 @@
+import logging
+
 from PyQt5.QtWidgets import (
     QMainWindow,
     QTabWidget,
@@ -14,8 +16,9 @@ from PyQt5.QtWidgets import (
     QApplication,
 )
 from PyQt5.QtCore import Qt, pyqtSlot
+
 from client.controllers.main_window_controller import main_window_controller
-import logging
+
 
 logger = logging.getLogger(__name__)
 
