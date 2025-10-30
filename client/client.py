@@ -5,9 +5,8 @@ import ssl
 import os
 
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QFontDatabase, QFont
+from PyQt5.QtGui import QFontDatabase, QFont, QIcon
 
-from client.controllers.main_window_controller import MainWindowController
 from client.gui.main_window import MainWindow
 from client.services.listener_service import ListenerService
 from client.services.sender_service import SenderService
@@ -38,15 +37,36 @@ class RemoteDesktopClient:
     def __initialize_qt_application(self):
         """Khởi tạo ứng dụng QApplication."""
         try:
+            # Fix Windows taskbar icon grouping issue
+            if sys.platform == "win32":
+                import ctypes
+
+                myappid = "pbl4.remotedesktop.app"
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
             self.app = QApplication(sys.argv)
             self.app.setApplicationName("Remote Desktop Client")
+
+            # Set application icon
+            icon_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "assets",
+                "images",
+                "icon.png",
+            )
+            if os.path.exists(icon_path):
+                app_icon = QIcon(icon_path)
+                self.app.setWindowIcon(app_icon)
+                logger.info(f"Application icon loaded from {icon_path}")
+            else:
+                logger.warning(f"Icon file not found at {icon_path}")
 
             # Load custom font from assets/fonts
             font_path = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)),
                 "assets",
                 "fonts",
-                "reverier-mono-regular.ttf",
+                "JetBrainsMono-Regular.ttf",
             )
 
             if os.path.exists(font_path):
@@ -55,9 +75,9 @@ class RemoteDesktopClient:
                     font_families = QFontDatabase.applicationFontFamilies(font_id)
                     if font_families:
                         font_family = font_families[0]
-                        font = QFont(font_family, 10)  # 10 is the default size
+                        font = QFont(font_family, 10)
                         self.app.setFont(font)
-                        logger.info(f"Custom font '{font_family}' loaded successfully")
+                        logger.info(f"Font '{font_family}' loaded successfully")
                     else:
                         logger.warning("Font family not found in the font file")
                 else:
@@ -185,19 +205,16 @@ class RemoteDesktopClient:
                 self.main_window.cleanup()
                 self.main_window = None
 
-            # Shutdown services
-            ListenerService.shutdown()
-            SenderService.shutdown()
-            KeyboardExecutorService.shutdown()
-
-            # Close socket
             if self.socket:
                 try:
                     self.socket.close()
-                    logger.debug("Socket closed")
                 except Exception as e:
                     logger.error(f"Error closing socket: {e}")
                 self.socket = None
+
+            ListenerService.shutdown()
+            SenderService.shutdown()
+            KeyboardExecutorService.shutdown()
 
             # Quit QApplication
             if self.app:

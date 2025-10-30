@@ -19,16 +19,16 @@ class ScreenShareService:
     Screen sharing service - capture 1 lần, gửi cho nhiều sessions.
     """
 
-    _instance = None
-    _lock = threading.Lock()
+    __instance = None
+    __lock = threading.Lock()
 
     def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
+        if cls.__instance is None:
+            with cls.__lock:
+                if cls.__instance is None:
+                    cls.__instance = super().__new__(cls)
+                    cls.__instance._initialized = False
+        return cls.__instance
 
     def __init__(self):
         if self._initialized:
@@ -64,14 +64,14 @@ class ScreenShareService:
             self._active_sessions.add(session_id)
 
             if not self._encoder:
-                self._initialize_encoder()
+                self.__initialize_encoder()
 
-            self._send_config_to_session(session_id)
+            self.__send_config_to_session(session_id)
 
             if not self._is_running.is_set():
-                self._start_streaming()
+                self.__start_streaming()
 
-    def _initialize_encoder(self):
+    def __initialize_encoder(self):
         """Khởi tạo encoder với dummy frame để có extradata."""
         try:
             with mss.mss() as sct:
@@ -111,7 +111,7 @@ class ScreenShareService:
         except Exception as e:
             logger.error(f"Error initializing encoder: {e}", exc_info=True)
 
-    def _send_config_to_session(self, session_id: str):
+    def __send_config_to_session(self, session_id: str):
         """Gửi video config cho session cụ thể."""
         if self._encoder and self._screen_config:
             extradata = self._encoder.get_extradata()
@@ -143,9 +143,9 @@ class ScreenShareService:
                 )
 
             if not self._active_sessions and self._is_running.is_set():
-                self._stop_streaming()
+                self.__stop_streaming()
 
-    def _start_streaming(self):
+    def __start_streaming(self):
         """Bắt đầu streaming (private method)."""
         if self._is_running.is_set():
             logger.warning("Centralized streaming already running")
@@ -153,12 +153,12 @@ class ScreenShareService:
 
         self._is_running.set()
         self._streaming_thread = threading.Thread(
-            target=self._stream_worker, daemon=True, name="CentralizedScreenStreamer"
+            target=self.__stream_worker, daemon=True, name="CentralizedScreenStreamer"
         )
         self._streaming_thread.start()
         logger.info("Centralized screen streaming started")
 
-    def _stop_streaming(self):
+    def __stop_streaming(self):
         """Dừng streaming (private method)."""
         if not self._is_running.is_set():
             return
@@ -175,7 +175,7 @@ class ScreenShareService:
 
         logger.info("Centralized screen streaming stopped")
 
-    def _stream_worker(self):
+    def __stream_worker(self):
         """Thread worker: capture 1 lần → encode 1 lần → gửi cho tất cả sessions."""
         frame_delay = 1.0 / self._fps
         frame_count = 0
@@ -197,7 +197,7 @@ class ScreenShareService:
                             "Encoder not initialized, initializing in stream worker..."
                         )
                         with self._sessions_lock:
-                            self._initialize_encoder()
+                            self.__initialize_encoder()
 
                     # Kiểm tra lại sau khi khởi tạo
                     if not self._encoder or not self._screen_config:

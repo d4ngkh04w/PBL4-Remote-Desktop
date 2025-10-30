@@ -57,13 +57,13 @@ class KeyboardExecutorService:
         "pause": keyboard.Key.pause,
     }
 
-    _keyboard_controller = None
+    __keyboard_controller = None
 
     @classmethod
     def initialize(cls):
         """Khởi tạo keyboard controller"""
         try:
-            cls._keyboard_controller = keyboard.Controller()
+            cls.__keyboard_controller = keyboard.Controller()
             return True
         except Exception as e:
             logger.error(
@@ -92,7 +92,7 @@ class KeyboardExecutorService:
     @classmethod
     def __execute_special_key(cls, packet: KeyboardPacket):
         """Thực thi phím đặc biệt"""
-        if not cls._keyboard_controller:
+        if not cls.__keyboard_controller:
             return
 
         key_name = packet.key_value
@@ -104,10 +104,10 @@ class KeyboardExecutorService:
 
         try:
             if packet.event_type == KeyBoardEventType.PRESS:
-                cls._keyboard_controller.press(key)
+                cls.__keyboard_controller.press(key)
                 logger.debug(f"Pressed special key: {key_name}")
             elif packet.event_type == KeyBoardEventType.RELEASE:
-                cls._keyboard_controller.release(key)
+                cls.__keyboard_controller.release(key)
                 logger.debug(f"Released special key: {key_name}")
         except Exception as e:
             logger.error(f"Error executing special key {key_name}: {e}", exc_info=True)
@@ -115,7 +115,7 @@ class KeyboardExecutorService:
     @classmethod
     def __execute_character_key(cls, packet: KeyboardPacket):
         """Thực thi phím ký tự"""
-        if not cls._keyboard_controller:
+        if not cls.__keyboard_controller:
             return
 
         key_value = packet.key_value
@@ -124,10 +124,10 @@ class KeyboardExecutorService:
             # Nếu key_value là string (ký tự)
             if isinstance(key_value, str):
                 if packet.event_type == KeyBoardEventType.PRESS:
-                    cls._keyboard_controller.press(key_value)
+                    cls.__keyboard_controller.press(key_value)
                     logger.debug(f"Pressed character: {key_value}")
                 elif packet.event_type == KeyBoardEventType.RELEASE:
-                    cls._keyboard_controller.release(key_value)
+                    cls.__keyboard_controller.release(key_value)
                     logger.debug(f"Released character: {key_value}")
             # Nếu key_value là mã key code
             elif isinstance(key_value, int):
@@ -135,10 +135,10 @@ class KeyboardExecutorService:
                 char = chr(key_value) if 32 <= key_value <= 126 else None
                 if char:
                     if packet.event_type == KeyBoardEventType.PRESS:
-                        cls._keyboard_controller.press(char)
+                        cls.__keyboard_controller.press(char)
                         logger.debug(f"Pressed key code: {key_value} ({char})")
                     elif packet.event_type == KeyBoardEventType.RELEASE:
-                        cls._keyboard_controller.release(char)
+                        cls.__keyboard_controller.release(char)
                         logger.debug(f"Released key code: {key_value} ({char})")
                 else:
                     logger.warning(f"Cannot convert key code to character: {key_value}")
@@ -150,7 +150,7 @@ class KeyboardExecutorService:
     @classmethod
     def __execute_key_combination(cls, packet: KeyboardPacket):
         """Thực thi tổ hợp phím"""
-        if not cls._keyboard_controller:
+        if not cls.__keyboard_controller:
             return
         combination = packet.key_value
 
@@ -172,17 +172,17 @@ class KeyboardExecutorService:
 
                 # Nhấn tất cả các phím modifier trước
                 for key in keys[:-1]:
-                    cls._keyboard_controller.press(key)
+                    cls.__keyboard_controller.press(key)
 
                 # Nhấn phím chính
-                cls._keyboard_controller.press(keys[-1])
+                cls.__keyboard_controller.press(keys[-1])
 
                 # Nhả phím chính trước
-                cls._keyboard_controller.release(keys[-1])
+                cls.__keyboard_controller.release(keys[-1])
 
                 # Nhả các phím modifier
                 for key in reversed(keys[:-1]):
-                    cls._keyboard_controller.release(key)
+                    cls.__keyboard_controller.release(key)
 
                 logger.debug(f"Executed key combination: {'+'.join(combination)}")
 
@@ -194,5 +194,4 @@ class KeyboardExecutorService:
     @classmethod
     def shutdown(cls):
         """Dọn dẹp tài nguyên"""
-        cls._keyboard_controller = None
-        logger.info("KeyboardExecutorService shutdown")
+        cls.__keyboard_controller = None

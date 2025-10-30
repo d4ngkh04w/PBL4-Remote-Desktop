@@ -19,12 +19,12 @@ class SenderService:
         """Khởi tạo dịch vụ gửi dữ liệu với socket đã kết nối."""
         cls.__socket = sock
         cls.__shutdown_event.clear()
-        cls.__sending_thread = threading.Thread(target=cls._send_worker, daemon=True)
+        cls.__sending_thread = threading.Thread(target=cls.__send_worker, daemon=True)
         cls.__sending_thread.start()
         logger.info("SenderService initialized and sending thread started")
 
     @classmethod
-    def _send_worker(cls):
+    def __send_worker(cls):
         """Worker thread để gửi dữ liệu từ hàng đợi."""
         while not cls.__shutdown_event.is_set():
             try:

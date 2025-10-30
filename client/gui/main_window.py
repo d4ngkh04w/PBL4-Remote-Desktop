@@ -1,21 +1,20 @@
 import logging
+import os
 
 from PyQt5.QtWidgets import (
     QMainWindow,
-    QTabWidget,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QFormLayout,
     QLabel,
     QPushButton,
-    QGroupBox,
     QLineEdit,
-    QStatusBar,
     QMessageBox,
     QApplication,
+    QFrame,
 )
-from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtCore import Qt, pyqtSlot, QSize, QPoint
+from PyQt5.QtGui import QIcon
 
 from client.controllers.main_window_controller import main_window_controller
 
@@ -25,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
-    Cửa sổ chính của ứng dụng (View).
-    Chịu trách nhiệm hiển thị giao diện, nhận tương tác người dùng, khởi tạo widget
+    Cửa sổ chính của ứng dụng - Giao diện đơn giản, tối màu
     """
 
     def __init__(self, config):
@@ -35,17 +33,25 @@ class MainWindow(QMainWindow):
         self.config = config
         self._cleanup_done = False
 
-        # Khởi tạo các biến UI
-        self.id_display: QLabel | None = None
-        self.password_display: QLabel | None = None
-        self.connect_btn: QPushButton | None = None
-        self.refresh_btn: QPushButton | None = None
-        self.host_id_input: QLineEdit | None = None
-        self.host_pass_input: QLineEdit | None = None
-        self.tabs: QTabWidget = QTabWidget()
-        self.status_bar: QStatusBar | None = None
+        # Variables for window dragging
+        self._drag_pos = QPoint()
+        self._is_maximized = False
 
-        # Khởi tạo Controller (chỉ truyền config, không truyền self)
+        # Reference to maximize button for icon switching
+        self.maximize_btn: QPushButton | None = None
+
+        # Khởi tạo các biến UI
+        self.id_label: QLabel | None = None
+        self.password_label: QLabel | None = None
+        self.remote_id_input: QLineEdit | None = None
+        self.remote_password_input: QLineEdit | None = None
+        self.connect_btn: QPushButton | None = None
+        self.custom_password_display: QLineEdit | None = (
+            None  # Hiển thị custom password (ẩn)
+        )
+        self.custom_password_container: QWidget | None = None  # Container để show/hide
+
+        # Khởi tạo Controller
         self.controller = main_window_controller
 
         # Setup UI
@@ -58,58 +64,320 @@ class MainWindow(QMainWindow):
         self.controller.start()
         self.controller.request_new_password()
 
-    def init_ui(self):
-        """Khởi tạo giao diện người dùng, layout và style."""
-        self.setWindowTitle("Remote Desktop Client - PBL4")
-        self.setGeometry(100, 100, 900, 700)
+        # Cập nhật hiển thị custom password nếu có
+        self.update_custom_password_display()
 
-        # Apply modern style
+    def init_ui(self):
+        """Khởi tạo giao diện đơn giản, tối màu cho Remote Desktop."""
+        # Remove window frame and title bar
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+
+        self.setWindowTitle("PBL4 Remote Desktop")
+        self.setWindowIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "icon.png",
+                )
+            )
+        )
+
+        # Set window size
+        self.resize(1200, 750)
+
+        # Center the window on the screen
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.geometry()
+            x = (screen_geometry.width() - self.width()) // 2
+            y = (screen_geometry.height() - self.height()) // 2
+            self.move(x, y)
+        else:
+            self.move(100, 100)
+
+        # Get current application font family
+        app_font_family = QApplication.font().family()
+
+        # Dark theme stylesheet - Optimized
         self.setStyleSheet(
+            f"""
+            QMainWindow {{
+                background-color: #1a1a1a;
+            }}
+            QWidget {{
+                background-color: #1a1a1a;
+                color: #e8e8e8;
+                font-family: '{app_font_family}', 'Courier New', monospace;
+            }}
+            QLabel {{
+                color: #e8e8e8;
+            }}
+            QLineEdit {{
+                background-color: #2a2a2a;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 12px 16px;
+                color: #e8e8e8;
+                font-size: 14px;
+                selection-background-color: #ffd700;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid #ffd700;
+                background-color: #2d2d2d;
+            }}  
+            QLineEdit:hover {{
+                border: 1px solid #4a4a4a;
+            }}
+            QPushButton {{
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 12px 24px;
+                color: #e8e8e8;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: #3a3a3a;
+                border: 1px solid #505050;
+            }}
+            QPushButton:pressed {{
+                background-color: #242424;
+            }}
+            QPushButton:disabled {{
+                background-color: #1e1e1e;
+                color: #6a6a6a;
+                border: 1px solid #2d2d2d;
+            }}
+            QPushButton#connectBtn {{
+                background-color: #ffd700;
+                border: none;
+                color: #1a1a1a;
+                font-weight: 600;
+                font-size: 14px;
+            }}
+            QPushButton#connectBtn:hover {{
+                background-color: #ffed4e;
+            }}
+            QPushButton#connectBtn:pressed {{
+                background-color: #e6c200;
+            }}
+            QPushButton#refreshBtn {{
+                background-color: transparent;
+                border: 1px solid #404040;
+                font-size: 18px;
+            }}
+            QPushButton#refreshBtn:hover {{
+                background-color: #2d2d2d;
+                border: 1px solid #505050;
+            }}
+        """
+        )
+
+        # Main container
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Custom title bar
+        title_bar = self.create_title_bar()
+        main_layout.addWidget(title_bar)
+
+        # Content area
+        content_container = QWidget()
+        content_layout = QHBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        self.create_main_content(content_layout)
+
+        main_layout.addWidget(content_container)
+
+    def create_title_bar(self):
+        """Create custom title bar."""
+        title_bar = QWidget()
+        title_bar.setFixedHeight(40)
+        title_bar.setStyleSheet(
             """
-            QMainWindow {
-                background-color: #f5f5f5;
-            }
-            QTabWidget::pane {
-                border: 1px solid #c0c0c0;
-                background-color: white;
-            }
-            QTabBar::tab {
-                background-color: #e0e0e0;
-                padding: 8px 16px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: white;
-                border-bottom: 2px solid #0066cc;
+            QWidget {
+                background-color: #1a1a1a;
             }
         """
         )
 
-        # Central widget with tabs
-        self.setCentralWidget(self.tabs)
+        title_layout = QHBoxLayout(title_bar)
+        title_layout.setContentsMargins(15, 0, 0, 0)
+        title_layout.setSpacing(0)
 
-        # Create tabs
-        self.create_host_tab()
-        self.create_controller_tab()
+        # App icon and title
+        icon_label = QLabel()
+        icon_label.setPixmap(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "icon.png",
+                )
+            ).pixmap(18, 18)
+        )
 
-        # Disable controller tab until connected to server
-        self.tabs.setTabEnabled(1, False)
+        title_label = QLabel("PBL4 Remote Desktop")
+        title_label.setStyleSheet(
+            """
+            color: #cccccc;
+            font-size: 12px;
+            font-weight: 400;
+            padding-left: 8px;
+        """
+        )
 
-        # Status bar
-        self.status_bar = self.statusBar()
-        if not self.status_bar:
-            self.status_bar = QStatusBar()
-            self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Initializing...")
+        title_layout.addWidget(icon_label)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+
+        # Window control buttons
+        btn_style = """
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                padding: 0px;
+                min-width: 46px;
+                max-width: 46px;
+                min-height: 40px;
+                max-height: 40px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+        """
+
+        minimize_btn = QPushButton()
+        minimize_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "minimize.svg",
+                )
+            )
+        )
+        minimize_btn.setToolTip("Minimize")
+        minimize_btn.setIconSize(QSize(24, 24))
+        minimize_btn.setStyleSheet(btn_style)
+        minimize_btn.clicked.connect(self.showMinimized)
+
+        self.maximize_btn = QPushButton()
+        self.maximize_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "maximize.svg",
+                )
+            )
+        )
+        self.maximize_btn.setIconSize(QSize(24, 24))
+        self.maximize_btn.setStyleSheet(btn_style)
+        self.maximize_btn.clicked.connect(self.toggle_maximize)
+
+        close_btn = QPushButton()
+        close_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "close.svg",
+                )
+            )
+        )
+        close_btn.setToolTip("Close")
+        close_btn.setIconSize(QSize(24, 24))
+        close_btn.setStyleSheet(
+            btn_style
+            + """
+            QPushButton:hover {
+                background-color: #e81123;
+            }
+            QPushButton:pressed {
+                background-color: #c50f1f;
+            }
+        """
+        )
+        close_btn.clicked.connect(self.close)
+
+        title_layout.addWidget(minimize_btn)
+        title_layout.addWidget(self.maximize_btn)
+        title_layout.addWidget(close_btn)
+
+        # Make title bar draggable
+        title_bar.mousePressEvent = self.title_bar_mouse_press
+        title_bar.mouseMoveEvent = self.title_bar_mouse_move
+        title_bar.mouseDoubleClickEvent = lambda e: self.toggle_maximize()
+
+        return title_bar
+
+    def title_bar_mouse_press(self, event):
+        """Handle mouse press on title bar for dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        """Handle mouse move on title bar for dragging."""
+        if event.buttons() == Qt.MouseButton.LeftButton and not self._is_maximized:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def toggle_maximize(self):
+        """Toggle between maximized and normal state."""
+        if self._is_maximized:
+            self.showNormal()
+            self._is_maximized = False
+            if self.maximize_btn:
+                self.maximize_btn.setIcon(
+                    QIcon(
+                        os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                            "assets",
+                            "images",
+                            "maximize.svg",
+                        )
+                    )
+                )
+                self.maximize_btn.setToolTip("Maximize")
+        else:
+            self.showMaximized()
+            self._is_maximized = True
+            if self.maximize_btn:
+                self.maximize_btn.setIcon(
+                    QIcon(
+                        os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                            "assets",
+                            "images",
+                            "unmaximize.svg",
+                        )
+                    )
+                )
+                self.maximize_btn.setToolTip("Restore Down")
 
     def _connect_controller_signals(self):
         """Kết nối các signal từ Controller tới các slot cập nhật UI."""
-        self.controller.status_updated.connect(self.update_status_bar)
         self.controller.id_updated.connect(self.update_id_display)
         self.controller.password_updated.connect(self.update_password_display)
-        self.controller.tabs_state_changed.connect(self.set_controller_tab_enabled)
         self.controller.notification_requested.connect(self.show_notification)
-
         self.controller.connect_button_state_changed.connect(
             self.update_connect_button_state
         )
@@ -117,367 +385,656 @@ class MainWindow(QMainWindow):
         self.controller.widget_creation_requested.connect(
             self.create_remote_widget_in_main_thread
         )
+        self.controller.custom_password_changed.connect(
+            self.update_custom_password_display
+        )
 
     # ==========================================
-    # UI Creation Methods (Layout & Style)
+    # UI Creation Methods
     # ==========================================
 
-    def create_host_tab(self):
-        """Tab hiển thị ID và Password của máy này."""
-        host_widget = QWidget()
-        layout = QVBoxLayout(host_widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
+    def create_main_content(self, parent_layout):
+        """Tạo nội dung chính."""
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(60, 50, 60, 50)
+        content_layout.setSpacing(40)
 
-        # Title
-        title = QLabel("Share Your ID & Password")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #333;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        # === YOUR COMPUTER SECTION ===
+        your_section = QWidget()
+        your_section_layout = QVBoxLayout(your_section)
+        your_section_layout.setSpacing(18)
 
-        # ID Section
-        id_group = QGroupBox("Your ID")
-        id_group.setStyleSheet(
+        # Section header
+        your_header = QLabel("Your Computer")
+        your_header.setStyleSheet(
             """
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #0066cc;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
+            font-size: 24px;
+            font-weight: 600;
+            color: #ffffff;
+            padding-bottom: 5px;
+            letter-spacing: 0.2px;
+        """
+        )
+        your_section_layout.addWidget(your_header)
+
+        # Info text
+        your_info = QLabel(
+            "Share this ID and Password with others to allow them to connect to your computer"
+        )
+        your_info.setWordWrap(True)
+        your_info.setStyleSheet(
+            """
+            font-size: 14px;
+            color: #9d9d9d;
+            padding-bottom: 8px;
+            line-height: 1.5;
+        """
+        )
+        your_section_layout.addWidget(your_info)
+
+        # ID and Password container
+        credentials_container = QWidget()
+        credentials_layout = QHBoxLayout(credentials_container)
+        credentials_layout.setSpacing(20)
+
+        # Your ID box
+        id_box = QWidget()
+        id_box_layout = QVBoxLayout(id_box)
+        id_box_layout.setSpacing(10)
+        id_box_layout.setContentsMargins(0, 0, 0, 0)
+
+        id_title = QLabel("Your ID")
+        id_title.setStyleSheet(
+            """
+            font-size: 13px;
+            color: #9d9d9d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        """
+        )
+
+        # ID display with copy button inside
+        id_display_container = QWidget()
+        id_display_container.setStyleSheet(
+            """
+            QWidget {
+                background-color: #2a2a2a;
+                border: 2px solid #404040;
+                border-radius: 8px;
             }
         """
         )
-        id_layout = QVBoxLayout(id_group)
+        id_display_layout = QHBoxLayout(id_display_container)
+        id_display_layout.setContentsMargins(20, 15, 15, 15)
+        id_display_layout.setSpacing(10)
 
-        self.id_display = QLabel("Connecting...")
-        self.id_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.id_display.setStyleSheet(
+        self.id_label = QLabel("Connecting...")
+        self.id_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.id_label.setStyleSheet(
             """
             QLabel {
-                font-size: 28px;
-                font-weight: bold;
-                color: #0066cc;
-                background-color: #f8f9fa;
-                border: 2px dashed #0066cc;
-                border-radius: 8px;
-                padding: 15px;
-                margin: 5px;
-            }
-        """
-        )
-        id_layout.addWidget(self.id_display)
-        layout.addWidget(id_group)
-
-        # Password Section
-        pass_group = QGroupBox("Password")
-        pass_group.setStyleSheet(
-            """
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #009900;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-        """
-        )
-        pass_layout = QVBoxLayout(pass_group)
-
-        self.password_display = QLabel("Loading...")
-        self.password_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.password_display.setStyleSheet(
-            """
-            QLabel {
-                font-size: 22px;
-                font-weight: bold;
-                color: #009900;
-                background-color: #f8fff8;
-                border: 2px dashed #009900;
-                border-radius: 8px;
-                padding: 12px;
-                margin: 5px;
-            }
-        """
-        )
-        pass_layout.addWidget(self.password_display)
-        layout.addWidget(pass_group)
-
-        # Action buttons styles
-        btn_style = """
-            QPushButton {
-                background-color: #007bff;
-                color: white;
+                background-color: transparent;
                 border: none;
-                border-radius: 5px;
-                font-weight: bold;
-                padding: 10px;
+                font-size: 28px;
+                font-weight: 600;
+                color: #ffd700;
+                letter-spacing: 2px;
+            }
+        """
+        )
+
+        copy_id_btn = QPushButton()
+        copy_id_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "copy.png",
+                )
+            )
+        )
+        copy_id_btn.setIconSize(QSize(20, 20))
+        copy_id_btn.setFixedSize(40, 40)
+        copy_id_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                color: #9d9d9d;
             }
             QPushButton:hover {
-                background-color: #0056b3;
+                background-color: #3a3a3a;
+                border: 1px solid #ffd700;
             }
             QPushButton:pressed {
-                background-color: #004085;
+                background-color: #2a2a2a;
             }
         """
-
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
-
-        self.refresh_btn = QPushButton("🔄 Refresh Password")
-        self.refresh_btn.setMinimumHeight(40)
-        self.refresh_btn.setStyleSheet(btn_style)
-        # Kết nối tới phương thức yêu cầu của controller
-        self.refresh_btn.clicked.connect(self.controller.request_new_password)
-
-        copy_id_btn = QPushButton("📋 Copy ID")
-        copy_id_btn.setMinimumHeight(40)
-        copy_id_btn.setStyleSheet(btn_style)
-        # Kết nối tới phương thức yêu cầu của controller
+        )
+        copy_id_btn.setToolTip("Copy ID")
         copy_id_btn.clicked.connect(self.controller.request_copy_id)
 
-        copy_pass_btn = QPushButton("📋 Copy Password")
-        copy_pass_btn.setMinimumHeight(40)
-        copy_pass_btn.setStyleSheet(btn_style)
-        # Kết nối tới phương thức yêu cầu của controller
-        copy_pass_btn.clicked.connect(self.controller.request_copy_password)
+        id_display_layout.addWidget(self.id_label, 1)
+        id_display_layout.addWidget(copy_id_btn)
 
-        btn_layout.addWidget(self.refresh_btn)
-        btn_layout.addWidget(copy_id_btn)
-        btn_layout.addWidget(copy_pass_btn)
-        layout.addLayout(btn_layout)
+        id_box_layout.addWidget(id_title)
+        id_box_layout.addWidget(id_display_container)
 
-        # Custom Password Section
-        custom_pass_group = QGroupBox("Custom Password (Optional)")
-        custom_pass_group.setStyleSheet(
+        # Password box
+        pass_box = QWidget()
+        pass_box_layout = QVBoxLayout(pass_box)
+        pass_box_layout.setSpacing(10)
+        pass_box_layout.setContentsMargins(0, 0, 0, 0)
+
+        pass_title = QLabel("Password")
+        pass_title.setStyleSheet(
             """
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #ff6600;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
+            font-size: 13px;
+            color: #9d9d9d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        """
+        )
+
+        # Password display with buttons inside
+        password_display_container = QWidget()
+        password_display_container.setStyleSheet(
+            """
+            QWidget {
+                background-color: #2a2a2a;
+                border: 2px solid #404040;
+                border-radius: 8px;
             }
         """
         )
-        custom_pass_layout = QVBoxLayout(custom_pass_group)
+        password_display_layout = QHBoxLayout(password_display_container)
+        password_display_layout.setContentsMargins(20, 15, 15, 15)
+        password_display_layout.setSpacing(10)
 
-        info_label = QLabel(
-            "Set a permanent password that won't change when you refresh."
+        self.password_label = QLabel("Loading...")
+        self.password_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.password_label.setStyleSheet(
+            """
+            QLabel {
+                background-color: transparent;
+                border: none;
+                font-size: 20px;
+                font-weight: 500;
+                color: #4ec9b0;
+                letter-spacing: 3px;
+            }
+        """
         )
-        info_label.setStyleSheet("font-size: 12px; color: #666; font-style: italic;")
-        info_label.setWordWrap(True)
-        custom_pass_layout.addWidget(info_label)
 
-        custom_pass_btn_layout = QHBoxLayout()
+        # Button container
+        button_container = QWidget()
+        button_container.setStyleSheet("background-color: transparent; border: none;")
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
 
-        set_custom_pass_btn = QPushButton("🔐 Set Custom Password")
-        set_custom_pass_btn.setMinimumHeight(40)
-        set_custom_pass_btn.setStyleSheet(btn_style)
-        set_custom_pass_btn.clicked.connect(self.controller.request_set_custom_password)
-
-        remove_custom_pass_btn = QPushButton("❌ Remove Custom Password")
-        remove_custom_pass_btn.setMinimumHeight(40)
-        remove_custom_pass_btn.setStyleSheet(
+        copy_pass_btn = QPushButton()
+        copy_pass_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "copy.png",
+                )
+            )
+        )
+        copy_pass_btn.setIconSize(QSize(20, 20))
+        copy_pass_btn.setFixedSize(40, 40)
+        copy_pass_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-weight: bold;
-                padding: 10px;
+                background-color: transparent;
+                border: 1px solid #404040;
+                border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: #c82333;
+                background-color: #3a3a3a;
+                border: 1px solid #ffd700;
             }
             QPushButton:pressed {
-                background-color: #bd2130;
+                background-color: #2a2a2a;
             }
         """
         )
-        remove_custom_pass_btn.clicked.connect(
+        copy_pass_btn.setToolTip("Copy Password")
+        copy_pass_btn.clicked.connect(self.controller.request_copy_password)
+
+        refresh_btn = QPushButton()
+        refresh_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "reload.png",
+                )
+            )
+        )
+        refresh_btn.setIconSize(QSize(20, 20))
+        refresh_btn.setObjectName("refreshBtn")
+        refresh_btn.setFixedSize(40, 40)
+        refresh_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #404040;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                border: 1px solid #ffd700;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+        """
+        )
+        refresh_btn.setToolTip("Refresh Password")
+        refresh_btn.clicked.connect(self.controller.request_new_password)
+
+        button_layout.addWidget(copy_pass_btn)
+        button_layout.addWidget(refresh_btn)
+
+        password_display_layout.addWidget(self.password_label, 1)
+        password_display_layout.addWidget(button_container)
+
+        pass_box_layout.addWidget(pass_title)
+        pass_box_layout.addWidget(password_display_container)
+
+        credentials_layout.addWidget(id_box, 3)
+        credentials_layout.addWidget(pass_box, 2)
+
+        your_section_layout.addWidget(credentials_container)
+
+        # Custom Password Section
+        custom_pass_container = QWidget()
+        custom_pass_layout = QHBoxLayout(custom_pass_container)
+        custom_pass_layout.setContentsMargins(0, 10, 0, 0)
+        custom_pass_layout.setSpacing(20)
+
+        set_custom_btn = QPushButton("Set Custom Password")
+        set_custom_btn.setFixedHeight(36)
+        set_custom_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #ffd700;
+                border: none;
+                border-radius: 6px;
+                color: #1a1a1a;
+                font-size: 13px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #ffed4e;
+            }
+            QPushButton:pressed {
+                background-color: #e6c200;
+            }
+        """
+        )
+        set_custom_btn.clicked.connect(self.on_set_custom_password_clicked)
+
+        # Custom password display (ẩn, chỉ hiện khi đã có custom password)
+        self.custom_password_display = QLineEdit()
+        self.custom_password_display.setReadOnly(True)
+        self.custom_password_display.setEchoMode(QLineEdit.EchoMode.Password)
+        self.custom_password_display.setFixedHeight(36)
+        self.custom_password_display.setFixedWidth(180)
+        self.custom_password_display.setStyleSheet(
+            """
+            QLineEdit {
+                background-color: #2a2a2a;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 8px 12px;
+                color: #e8e8e8;
+                font-size: 13px;
+                letter-spacing: 2px;
+            }
+        """
+        )
+        self.custom_password_display.setPlaceholderText("Custom Password Set")
+
+        # Nút xóa (icon close)
+        remove_custom_btn = QPushButton()
+        remove_custom_btn.setIcon(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "close.svg",
+                )
+            )
+        )
+        remove_custom_btn.setIconSize(QSize(16, 16))
+        remove_custom_btn.setFixedSize(32, 32)
+        remove_custom_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        remove_custom_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                border: 1px solid #404040;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #ff5555;
+                border: 1px solid #ff5555;
+            }
+            QPushButton:pressed {
+                background-color: #e04444;
+            }
+        """
+        )
+        remove_custom_btn.setToolTip("Remove Custom Password")
+        remove_custom_btn.clicked.connect(
             self.controller.request_remove_custom_password
         )
 
-        custom_pass_btn_layout.addWidget(set_custom_pass_btn)
-        custom_pass_btn_layout.addWidget(remove_custom_pass_btn)
-        custom_pass_layout.addLayout(custom_pass_btn_layout)
+        password_display_container = QWidget()
+        password_display_layout = QHBoxLayout(password_display_container)
+        password_display_layout.setContentsMargins(0, 0, 0, 0)
+        password_display_layout.setSpacing(8)
+        password_display_layout.addWidget(self.custom_password_display)
+        password_display_layout.addWidget(remove_custom_btn)
+        password_display_layout.addStretch()
 
-        layout.addWidget(custom_pass_group)
+        custom_pass_layout.addWidget(set_custom_btn)
+        custom_pass_layout.addWidget(password_display_container)
+        custom_pass_layout.addStretch()
 
-        layout.addStretch()
-        self.tabs.addTab(host_widget, "🏠 Your ID")
+        # Ẩn password display mặc định, sẽ hiện khi load hoặc set password
+        password_display_container.setVisible(False)
+        self.custom_password_container = (
+            password_display_container  # Lưu reference để show/hide
+        )
 
-    def create_controller_tab(self):
-        """Tab để nhập ID/Pass và kết nối đến máy khác."""
-        controller_widget = QWidget()
-        layout = QVBoxLayout(controller_widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
+        your_section_layout.addWidget(custom_pass_container)
 
-        # Title
-        title = QLabel("Connect to Partner's Computer")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #333;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        content_layout.addWidget(your_section)
 
-        # Connect Section
-        connect_group = QGroupBox("Connection Details")
-        connect_group.setStyleSheet(
+        # Separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setStyleSheet(
             """
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #6c757d;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
+            background-color: #3e3e42;
+            max-height: 1px;
+            border: none;
+            margin: 10px 0;
+        """
+        )
+        content_layout.addWidget(separator)
+
+        # === CONNECT TO PARTNER SECTION ===
+        partner_section = QWidget()
+        partner_section_layout = QVBoxLayout(partner_section)
+        partner_section_layout.setSpacing(18)
+
+        # Section header
+        partner_header = QLabel("Connect to Partner")
+        partner_header.setStyleSheet(
+            """
+            font-size: 24px;
+            font-weight: 600;
+            color: #ffffff;
+            padding-bottom: 5px;
+            letter-spacing: 0.2px;
+        """
+        )
+        partner_section_layout.addWidget(partner_header)
+
+        # Info text
+        partner_info = QLabel(
+            "Enter your partner's ID and Password to control their computer"
+        )
+        partner_info.setWordWrap(True)
+        partner_info.setStyleSheet(
+            """
+            font-size: 14px;
+            color: #9d9d9d;
+            padding-bottom: 8px;
+            line-height: 1.5;
+        """
+        )
+        partner_section_layout.addWidget(partner_info)
+
+        # Input container
+        input_container = QWidget()
+        input_layout = QHBoxLayout(input_container)
+        input_layout.setSpacing(20)
+
+        # Partner ID input
+        id_input_box = QWidget()
+        id_input_layout = QVBoxLayout(id_input_box)
+        id_input_layout.setSpacing(10)
+        id_input_layout.setContentsMargins(0, 0, 0, 0)
+
+        partner_id_title = QLabel("Partner ID")
+        partner_id_title.setStyleSheet(
+            """
+            font-size: 13px;
+            color: #9d9d9d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        """
+        )
+
+        self.remote_id_input = QLineEdit()
+        self.remote_id_input.setPlaceholderText("Enter 9-digit ID...")
+        self.remote_id_input.setMaxLength(9)
+        self.remote_id_input.setStyleSheet(
+            """
+            QLineEdit {
+                min-height: 50px;
+                font-size: 16px;
+                font-weight: 500;
+                letter-spacing: 1px;
             }
         """
         )
-        connect_layout = QFormLayout(connect_group)
-        connect_layout.setSpacing(15)
 
-        # Input styles
-        input_style = """
+        id_input_layout.addWidget(partner_id_title)
+        id_input_layout.addWidget(self.remote_id_input)
+
+        # Partner Password input
+        pass_input_box = QWidget()
+        pass_input_layout = QVBoxLayout(pass_input_box)
+        pass_input_layout.setSpacing(10)
+        pass_input_layout.setContentsMargins(0, 0, 0, 0)
+
+        partner_pass_title = QLabel("Password")
+        partner_pass_title.setStyleSheet(
+            """
+            font-size: 13px;
+            color: #9d9d9d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        """
+        )
+
+        self.remote_password_input = QLineEdit()
+        self.remote_password_input.setPlaceholderText("Enter password...")
+        self.remote_password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.remote_password_input.setStyleSheet(
+            """
             QLineEdit {
-                padding: 10px;
-                border: 2px solid #ced4da;
-                border-radius: 5px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #0066cc;
+                min-height: 50px;
+                font-size: 16px;
+                font-weight: 500;
             }
         """
+        )
 
-        # Partner ID Input
-        self.host_id_input = QLineEdit()
-        self.host_id_input.setPlaceholderText("Enter 9-digit Partner ID")
-        self.host_id_input.setMaxLength(9)
-        self.host_id_input.setStyleSheet(input_style)
-        connect_layout.addRow("Partner ID:", self.host_id_input)
+        pass_input_layout.addWidget(partner_pass_title)
+        pass_input_layout.addWidget(self.remote_password_input)
 
-        # Password Input
-        self.host_pass_input = QLineEdit()
-        self.host_pass_input.setPlaceholderText("Enter Password")
-        self.host_pass_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.host_pass_input.setStyleSheet(input_style)
-        connect_layout.addRow("Password:", self.host_pass_input)
+        # Connect button
+        connect_btn_box = QWidget()
+        connect_btn_layout = QVBoxLayout(connect_btn_box)
+        connect_btn_layout.setSpacing(10)
+        connect_btn_layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(connect_group)
+        connect_label = QLabel(" ")  # Spacer to align with inputs
+        connect_label.setStyleSheet("font-size: 13px;")
 
-        # Connect Button
-        self.connect_btn = QPushButton("🔗 Connect to Partner")
+        self.connect_btn = QPushButton("Connect")
+        self.connect_btn.setObjectName("connectBtn")
         self.connect_btn.setMinimumHeight(50)
+        self.connect_btn.setMinimumWidth(140)
         self.connect_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 8px;
                 font-size: 16px;
-                font-weight: bold;
-                padding: 15px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-            QPushButton:pressed {
-                background-color: #1e7e34;
-            }
-            QPushButton:disabled {
-                background-color: #6c757d;
+                min-height: 50px;
+                border-radius: 8px;
             }
         """
         )
-        # Kết nối tới handler cục bộ để lấy dữ liệu input
         self.connect_btn.clicked.connect(self.handle_connect_click)
-        layout.addWidget(self.connect_btn)
 
-        layout.addStretch()
+        connect_btn_layout.addWidget(connect_label)
+        connect_btn_layout.addWidget(self.connect_btn)
 
-        self.tabs.addTab(controller_widget, "🎮 Control Host")
+        input_layout.addWidget(id_input_box, 3)
+        input_layout.addWidget(pass_input_box, 2)
+        input_layout.addWidget(connect_btn_box)
+
+        partner_section_layout.addWidget(input_container)
+
+        content_layout.addWidget(partner_section)
+        content_layout.addStretch()
+
+        parent_layout.addWidget(content)
 
     # ==========================================
-    # User Interaction Handlers (View -> Controller)
+    # User Interaction Handlers
     # ==========================================
 
     def handle_connect_click(self):
         """Lấy dữ liệu từ input và gửi yêu cầu kết nối tới Controller."""
-        if self.host_id_input and self.host_pass_input:
-            host_id = self.host_id_input.text().strip()
-            host_pass = self.host_pass_input.text().strip()
+        if self.remote_id_input and self.remote_password_input:
+            host_id = self.remote_id_input.text().strip()
+            host_pass = self.remote_password_input.text().strip()
             # Controller sẽ lo việc validate và gửi packet
             self.controller.connect_to_partner(host_id, host_pass)
         else:
             self.show_notification("Input fields are not initialized.", "error")
 
-    # ==========================================
-    # UI Update Slots (Controller -> View)
-    # ==========================================
+    def on_set_custom_password_clicked(self):
+        """Xử lý khi click nút Set Custom Password."""
+        self.controller.request_set_custom_password()
 
-    @pyqtSlot(str)
-    def update_status_bar(self, message: str):
-        """Cập nhật thanh trạng thái."""
-        if self.status_bar:
-            self.status_bar.showMessage(message, 5000)
+    @pyqtSlot()
+    def update_custom_password_display(self):
+        """Cập nhật hiển thị custom password field dựa trên việc có custom password hay không."""
+        from client.managers.client_manager import ClientManager
+
+        has_custom_password = ClientManager.get_custom_password() is not None
+
+        if has_custom_password and self.custom_password_container:
+            custom_password = ClientManager.get_custom_password()
+            if self.custom_password_display and custom_password:
+                self.custom_password_display.setText(custom_password)
+            self.custom_password_container.setVisible(True)
+        elif self.custom_password_container:
+            self.custom_password_container.setVisible(False)
+
+    # ==========================================
+    # UI Update Slots
+    # ==========================================
 
     @pyqtSlot(str)
     def update_id_display(self, client_id: str):
         """Cập nhật label hiển thị ID."""
-        if self.id_display:
-            self.id_display.setText(client_id)
+        if self.id_label:
+            self.id_label.setText(client_id)
 
     @pyqtSlot(str)
     def update_password_display(self, password: str):
         """Cập nhật label hiển thị mật khẩu."""
-        if self.password_display:
-            self.password_display.setText(password)
-
-    @pyqtSlot(bool)
-    def set_controller_tab_enabled(self, enabled: bool):
-        """Bật/tắt tab điều khiển."""
-        self.tabs.setTabEnabled(1, enabled)
+        if self.password_label:
+            self.password_label.setText(password)
 
     @pyqtSlot(bool, str)
     def update_connect_button_state(self, enabled: bool, text: str):
-        """Cập nhật trạng thái và text của nút Connect."""
+        """Cập nhật trạng thái của nút Connect."""
         if self.connect_btn:
             self.connect_btn.setEnabled(enabled)
-            self.connect_btn.setText(text)
 
     @pyqtSlot(str, str)
     def show_notification(self, message: str, notif_type: str):
         """Hiển thị hộp thoại thông báo (Info, Warning, Error)."""
-        title = notif_type.capitalize()
+        msg_box = QMessageBox(self)
+        msg_box.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        msg_box.setText(message)
+
+        image_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "assets",
+            "images",
+        )
+
+        # Set icon based on type
         if notif_type == "error":
-            QMessageBox.critical(self, title, message)
+            msg_box.setIconPixmap(
+                QIcon(os.path.join(image_path, "error.png")).pixmap(64, 64)
+            )
         elif notif_type == "warning":
-            QMessageBox.warning(self, title, message)
+            msg_box.setIconPixmap(
+                QIcon(os.path.join(image_path, "warning.png")).pixmap(64, 64)
+            )
         else:
-            QMessageBox.information(self, title, message)
+            msg_box.setIconPixmap(
+                QIcon(os.path.join(image_path, "info.png")).pixmap(64, 64)
+            )
+
+        # Apply dark theme styling
+        msg_box.setStyleSheet(
+            """
+            QMessageBox {
+                background-color: #1a1a1a;
+                color: #e8e8e8;
+                border: 2px solid #2d2d2d;
+                border-radius: 10px;
+                padding: 3px;
+                margin: -1px;
+            }
+            QMessageBox QLabel {
+                color: #e8e8e8;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 8px 24px;
+                color: #e8e8e8;
+                font-size: 13px;
+                font-weight: 500;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                border: 1px solid #505050;
+            }
+            QPushButton:pressed {
+                background-color: #242424;
+            }
+        """
+        )
+
+        msg_box.exec()
 
     @pyqtSlot(str, str)
     def perform_clipboard_copy(self, type_label: str, content: str):
@@ -486,7 +1043,6 @@ class MainWindow(QMainWindow):
             clipboard = QApplication.clipboard()
             if clipboard:
                 clipboard.setText(content)
-                self.update_status_bar(f"{type_label} copied to clipboard!")
 
     @pyqtSlot(str)
     def create_remote_widget_in_main_thread(self, session_id: str):
@@ -499,16 +1055,13 @@ class MainWindow(QMainWindow):
 
             SessionManager._sessions[session_id].widget = remote_widget
 
-            self.controller.connect_button_state_changed.emit(
-                True, "🔗 Connect to Partner"
-            )
+            self.controller.connect_button_state_changed.emit(True, "")
 
             remote_widget.show()
             remote_widget.raise_()
             remote_widget.activateWindow()
 
             logger.debug(f"Remote widget created in main thread: {session_id}")
-            self.update_status_bar(f"Remote session started: {session_id}")
 
         except Exception as e:
             logger.error(

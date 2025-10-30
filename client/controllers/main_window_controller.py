@@ -1,6 +1,8 @@
 import logging
+import os
 
 from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtGui import QIcon
 
 from client.managers.client_manager import ClientManager
 from common.utils import format_numeric_id
@@ -21,6 +23,7 @@ class MainWindowController(QObject):
     notification_requested = pyqtSignal(
         str, str
     )  # message, type ('info', 'warning', 'error')
+    custom_password_changed = pyqtSignal()  # Thông báo khi custom password thay đổi
 
     connect_button_state_changed = pyqtSignal(bool, str)  # enabled, text
     text_copied_to_clipboard = pyqtSignal(str, str)  # type ('ID', 'Password'), content
@@ -66,6 +69,8 @@ class MainWindowController(QObject):
         client_id = ClientManager.get_client_id()
         self.id_updated.emit(format_numeric_id(client_id))
         self.tabs_state_changed.emit(True)
+        # Sau khi load client ID, custom password cũng đã được load, cần cập nhật UI
+        self.custom_password_changed.emit()
 
     def on_ui_update_status(self, status: str):
         self.status_updated.emit(status)
@@ -135,26 +140,73 @@ class MainWindowController(QObject):
                 "Custom password has been set successfully!", "info"
             )
             self.status_updated.emit("Custom password activated.")
+            self.custom_password_changed.emit()  # Thông báo UI cập nhật
 
     def request_remove_custom_password(self):
         """Yêu cầu xóa mật khẩu tự đặt."""
         from PyQt5.QtWidgets import QMessageBox
+        from PyQt5.QtCore import Qt
 
         # Kiểm tra xem có mật khẩu tự đặt không
         if ClientManager.get_custom_password() is None:
             self.notification_requested.emit(
-                "No custom password is currently set.", "info"
+                "No custom password is currently set", "info"
             )
             return
 
         # Xác nhận xóa
-        reply = QMessageBox.question(
-            None,
-            "Remove Custom Password",
-            "Are you sure you want to remove your custom password?",
-            QMessageBox.StandardButton.Yes,
-            QMessageBox.StandardButton.No,
+        msg_box = QMessageBox()
+        msg_box.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        msg_box.setText("Are you sure you want to remove your custom password?")
+        msg_box.setIconPixmap(
+            QIcon(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "assets",
+                    "images",
+                    "info.png",
+                )
+            ).pixmap(64, 64)
         )
+        msg_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+
+        # Apply dark theme styling
+        msg_box.setStyleSheet(
+            """
+            QMessageBox {
+                background-color: #1a1a1a;
+                color: #e8e8e8;
+                border: 2px solid #2d2d2d;
+                border-radius: 10px;
+            }
+            QMessageBox QLabel {
+                color: #e8e8e8;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 8px 24px;
+                color: #e8e8e8;
+                font-size: 13px;
+                font-weight: 500;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                border: 1px solid #505050;
+            }
+            QPushButton:pressed {
+                background-color: #242424;
+            }
+        """
+        )
+
+        reply = msg_box.exec()
 
         if reply == QMessageBox.StandardButton.Yes:
             ClientManager.set_custom_password(None)
@@ -162,6 +214,7 @@ class MainWindowController(QObject):
                 "Custom password has been removed.", "info"
             )
             self.status_updated.emit("Custom password deactivated.")
+            self.custom_password_changed.emit()  # Thông báo UI cập nhật
 
     # --- Dọn dẹp ---
     def cleanup(self):

@@ -1,6 +1,6 @@
 import logging
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QPixmap
 
 from client.services.keyboard_listener_service import KeyboardListenerService
@@ -13,8 +13,6 @@ class RemoteWidgetController(QObject):
 
     # --- Signals gửi đi cho View (RemoteWidget) ---
     frame_decoded = pyqtSignal(QPixmap)
-    status_updated = pyqtSignal(str)
-    info_updated = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
     disconnected = pyqtSignal()
     toggle_fullscreen = pyqtSignal()
@@ -24,10 +22,7 @@ class RemoteWidgetController(QObject):
         self.remote_widget = remote_widget
         self.session_id = session_id
 
-        self.original_width = 0
-        self.original_height = 0
         self.full_screen_pixmap: QPixmap | None = None
-        self._is_fitting_screen = True  # Mặc định là fit to screen
 
         self._running = False
         self._cleanup_done = False
@@ -41,15 +36,11 @@ class RemoteWidgetController(QObject):
         """Kết nối signals từ View đến slots của Controller và ngược lại."""
         # Controller -> View
         self.frame_decoded.connect(self.remote_widget.update_frame)
-        self.status_updated.connect(self.remote_widget.update_status_text)
-        self.info_updated.connect(self.remote_widget.update_info_text)
         self.error_occurred.connect(self.remote_widget.show_error)
         self.toggle_fullscreen.connect(self.remote_widget.toggle_fullscreen_ui)
 
         # View -> Controller
         self.remote_widget.disconnect_requested.connect(self.handle_disconnect_request)
-        self.remote_widget.fit_to_screen_requested.connect(self.fit_to_screen)
-        self.remote_widget.actual_size_requested.connect(self.actual_size)
         self.remote_widget.fullscreen_requested.connect(self.toggle_fullscreen.emit)
         self.remote_widget.widget_focused.connect(self.on_widget_focused)
         self.remote_widget.widget_unfocused.connect(self.on_widget_unfocused)
@@ -64,16 +55,6 @@ class RemoteWidgetController(QObject):
                 f"Received config for session {self.session_id}: "
                 f"{width}x{height}@{fps}fps"
             )
-            self.original_width = width
-            self.original_height = height
-
-            info_text = (
-                f"Resolution: {width}x{height} | "
-                f"FPS: {fps} | Codec: {codec.upper()}"
-            )
-            self.info_updated.emit(info_text)
-            self.status_updated.emit("🎥 Streaming")
-
         except Exception as e:
             logger.error(f"Error handling config: {e}", exc_info=True)
             self.error_occurred.emit(f"Config error: {str(e)}")
@@ -82,8 +63,8 @@ class RemoteWidgetController(QObject):
         """Xử lý frame đã được decode từ ReceiveHandler."""
         try:
             self.full_screen_pixmap = pixmap
-            # Cập nhật hiển thị
-            self._update_display()
+            # Gửi trực tiếp pixmap gốc, QLabel với ScaledContents sẽ tự động scale
+            self.frame_decoded.emit(pixmap)
 
         except Exception as e:
             logger.error(f"Error handling decoded frame: {e}", exc_info=True)
@@ -93,42 +74,6 @@ class RemoteWidgetController(QObject):
         """Xử lý lỗi decode từ ReceiveHandler."""
         logger.error(f"Decode error for session {self.session_id}: {error_message}")
         self.error_occurred.emit(error_message)
-
-    def _update_display(self):
-        """Cập nhật pixmap trên UI theo chế độ hiển thị hiện tại."""
-        if not self.full_screen_pixmap:
-            return
-        if self._is_fitting_screen:
-            self.fit_to_screen()
-        else:
-            self.actual_size()
-
-    @pyqtSlot()
-    def fit_to_screen(self):
-        """Thay đổi kích thước pixmap để vừa với cửa sổ."""
-        self._is_fitting_screen = True
-        if not self.full_screen_pixmap:
-            return
-
-        # Lấy kích thước của scroll_area từ widget
-        scroll_area_size = self.remote_widget.scroll_area.size()
-        scroll_area_size.setWidth(scroll_area_size.width() - 20)
-        scroll_area_size.setHeight(scroll_area_size.height() - 20)
-
-        scaled_pixmap = self.full_screen_pixmap.scaled(
-            scroll_area_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.frame_decoded.emit(scaled_pixmap)
-
-    @pyqtSlot()
-    def actual_size(self):
-        """Hiển thị pixmap với kích thước gốc."""
-        self._is_fitting_screen = False
-        if not self.full_screen_pixmap:
-            return
-        self.frame_decoded.emit(self.full_screen_pixmap)
 
     @pyqtSlot(str)
     def handle_disconnect_request(self, session_id: str):
