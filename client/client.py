@@ -3,6 +3,7 @@ import sys
 import socket
 import ssl
 import os
+import platform
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QFontDatabase, QFont, QIcon
@@ -11,6 +12,10 @@ from client.gui.main_window import MainWindow
 from client.services.listener_service import ListenerService
 from client.services.sender_service import SenderService
 from client.services.keyboard_executor_service import KeyboardExecutorService
+from client.services.mouse_executor_service import MouseExecutorService
+from common.packets import ClientInformationPacket
+from common.protocol import Protocol
+from common.utils import get_hostname, get_hardware_id
 
 
 logger = logging.getLogger(__name__)
@@ -127,6 +132,9 @@ class RemoteDesktopClient:
                 f"Successfully connected to server at {self.config['server_host']}:{self.config['server_port']}"
             )
 
+            # Gửi thông tin client lên server
+            self.__send_client_information()
+
             # Khởi tạo các dịch vụ sau khi kết nối thành công
             if not self.__init_services():
                 logger.error("Failed to initialize services")
@@ -141,6 +149,25 @@ class RemoteDesktopClient:
             logger.error(f"Failed to connect to server - {e}")
             return False
 
+    def __send_client_information(self):
+        """Gửi thông tin client (OS, hostname, device_id) lên server."""
+        try:
+            if not self.socket:
+                raise RuntimeError("Socket is not initialized")
+
+            os_info = platform.system()  # Windows, Linux, Darwin (macOS)
+            hostname = get_hostname()
+            device_id = get_hardware_id()
+
+            client_info_packet = ClientInformationPacket(
+                os=os_info, host_name=hostname, device_id=device_id
+            )
+
+            Protocol.send_packet(self.socket, client_info_packet)
+        except Exception as e:
+            logger.error(f"Failed to send client information: {e}")
+            raise
+
     def __init_services(self):
         """Khởi tạo dịch vụ Listener và Sender."""
         try:
@@ -148,8 +175,9 @@ class RemoteDesktopClient:
                 ListenerService.initialize(self.socket)
                 SenderService.initialize(self.socket)
 
-                # Khởi tạo KeyboardExecutorService (cho máy host)
+                # Khởi tạo KeyboardExecutorService và MouseExecutorService (cho máy host)
                 KeyboardExecutorService.initialize()
+                MouseExecutorService.initialize()
 
                 logger.debug("Listener and Sender services initialized successfully.")
                 return True

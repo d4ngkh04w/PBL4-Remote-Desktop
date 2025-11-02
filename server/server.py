@@ -4,7 +4,11 @@ import ssl
 import threading
 import logging
 
-from common.packets import AssignIdPacket, ConnectionResponsePacket
+from common.packets import (
+    AssignIdPacket,
+    ClientInformationPacket,
+    ConnectionResponsePacket,
+)
 from common.enums import Status
 from common.protocol import Protocol
 from common.utils import generate_numeric_id
@@ -72,6 +76,24 @@ class Server:
                             client_socket.close()
                         continue
 
+                    try:
+                        client_socket.settimeout(10)
+                        client_info_packet = Protocol.receive_packet(client_socket)
+
+                        if not isinstance(client_info_packet, ClientInformationPacket):
+                            logger.warning(
+                                f"Expected ClientInformationPacket but got {type(client_info_packet)}"
+                            )
+                            client_socket.close()
+                            self.client_semaphore.release()
+                            continue
+
+                    except Exception as e:
+                        logger.error(f"Failed to receive client information: {e}")
+                        client_socket.close()
+                        self.client_semaphore.release()
+                        continue
+
                     client_id = generate_numeric_id(9)
 
                     packet = AssignIdPacket(client_id=client_id)
@@ -80,7 +102,15 @@ class Server:
 
                     client_handler = threading.Thread(
                         target=self.handle_client,
-                        args=(client_socket, client_id, addr, self.client_semaphore),
+                        args=(
+                            client_socket,
+                            client_id,
+                            addr,
+                            self.client_semaphore,
+                            client_info_packet.os,
+                            client_info_packet.host_name,
+                            client_info_packet.device_id,
+                        ),
                         daemon=True,
                     )
                     client_handler.start()
@@ -170,12 +200,19 @@ class Server:
         client_id: str,
         client_addr: str,
         client_semaphore: threading.Semaphore,
+        os: str = "",
+        host_name: str = "",
+        device_id: str = "",
     ):
         """Main handler loop cho client"""
         sender_thread = None
         try:
-            ClientManager.add_client(client_socket, client_id, client_addr)
-            logger.info(f"Client {client_id} connected from {client_addr}")
+            ClientManager.add_client(
+                client_socket, client_id, client_addr, os, host_name, device_id
+            )
+            logger.info(
+                f"Client {client_id} ({host_name} - {os}) connected from {client_addr}"
+            )
 
             sender_thread = threading.Thread(
                 target=self.sender_worker, args=(client_socket, client_id), daemon=True

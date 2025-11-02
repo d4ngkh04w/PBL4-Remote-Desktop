@@ -45,6 +45,7 @@ class RemoteWidgetController(QObject):
         self.remote_widget.widget_focused.connect(self.on_widget_focused)
         self.remote_widget.widget_unfocused.connect(self.on_widget_unfocused)
         self.remote_widget.key_event_occurred.connect(self.on_key_event)
+        self.remote_widget.mouse_event_occurred.connect(self.on_mouse_event)
 
     def handle_video_config_received(
         self, width: int, height: int, fps: int, codec: str
@@ -100,6 +101,43 @@ class RemoteWidgetController(QObject):
     def on_key_event(self, event, event_type: str):
         """Xử lý sự kiện bàn phím từ widget."""
         KeyboardListenerService.handle_key_event(event, event_type, self.session_id)
+
+    @pyqtSlot(str, tuple, str, tuple)
+    def on_mouse_event(
+        self, event_type: str, position: tuple, button: str, scroll_delta: tuple
+    ):
+        """Xử lý sự kiện chuột từ widget."""
+        from client.services.sender_service import SenderService
+        from common.packets import MousePacket
+        from common.enums import MouseEventType, MouseButton
+
+        # Chuyển đổi event_type string sang enum
+        try:
+            mouse_event_type = MouseEventType[event_type]
+        except KeyError:
+            logger.error(f"Invalid mouse event type: {event_type}")
+            return
+
+        # Chuyển đổi button string sang enum
+        try:
+            mouse_button = MouseButton[button]
+        except KeyError:
+            logger.error(f"Invalid mouse button: {button}")
+            return
+
+        # Tạo và gửi gói tin chuột
+        packet = MousePacket(
+            event_type=mouse_event_type,
+            position=position,
+            button=mouse_button,
+            scroll_delta=scroll_delta,
+            session_id=self.session_id,
+        )
+        SenderService.send_packet(packet)
+        logger.debug(
+            f"Mouse event sent - Type: {event_type}, Pos: {position}, "
+            f"Button: {button}, Scroll: {scroll_delta}"
+        )
 
     def start(self):
         if self._running:

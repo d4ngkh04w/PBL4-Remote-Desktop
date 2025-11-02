@@ -20,6 +20,16 @@ class BasePacket:
         return f"{self.__class__.__name__}(type={self.packet_type})"
 
 
+class ClientInformationPacket(BasePacket):
+    """Thông tin của client"""
+
+    def __init__(self, os: str, host_name: str, device_id: str):
+        super().__init__(PacketType.CLIENT_INFORMATION)
+        self.os = os
+        self.host_name = host_name
+        self.device_id = device_id
+
+
 class AssignIdPacket(BasePacket):
     """
     Server cấp ID cho client
@@ -174,6 +184,7 @@ class MousePacket(BasePacket):
 
 Packet = (
     AssignIdPacket
+    | ClientInformationPacket
     | ConnectionRequestPacket
     | ConnectionResponsePacket
     | KeyboardPacket

@@ -15,6 +15,9 @@ ClientInfo = TypedDict(
         "socket": socket.socket | ssl.SSLSocket,
         "ip": str,
         "id": str,
+        "os": str,
+        "host_name": str,
+        "device_id": str,
         "queue": Queue[Packet],  # Hàng đợi để gửi gói tin
     },
 )
@@ -33,12 +36,18 @@ class ClientManager:
         client_socket: socket.socket | ssl.SSLSocket,
         client_id: str,
         client_ip: str,
+        os: str = "",
+        host_name: str = "",
+        device_id: str = "",
     ):
         with cls.__lock:
             client_info = ClientInfo(
                 socket=client_socket,
                 ip=client_ip,
                 id=client_id,
+                os=os,
+                host_name=host_name,
+                device_id=device_id,
                 queue=Queue(maxsize=2048),
             )
             cls.__active_clients[client_id] = client_info

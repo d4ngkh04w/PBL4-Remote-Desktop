@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QSizePolicy,
 )
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QMouseEvent
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 
 from client.controllers.remote_widget_controller import RemoteWidgetController
@@ -21,6 +21,9 @@ class RemoteWidget(QWidget):
     widget_focused = pyqtSignal()  # Widget được focus
     widget_unfocused = pyqtSignal()  # Widget mất focus
     key_event_occurred = pyqtSignal(object, str)  # Sự kiện phím (event, event_type)
+    mouse_event_occurred = pyqtSignal(
+        str, tuple, str, tuple
+    )  # Sự kiện chuột (event_type, position, button, scroll_delta)
 
     def __init__(self, session_id: str):
         super().__init__()
@@ -29,8 +32,9 @@ class RemoteWidget(QWidget):
         self._cleanup_done = False
         self._current_pixmap = None  # Lưu pixmap gốc để re-scale khi resize
 
-        # Cho phép widget nhận focus để lắng nghe sự kiện bàn phím
+        # Cho phép widget nhận focus để lắng nghe sự kiện bàn phím và chuột
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)  # Bật theo dõi di chuyển chuột
 
         self.init_ui()
 
@@ -52,9 +56,9 @@ class RemoteWidget(QWidget):
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.image_label.setStyleSheet("background-color: #2b2b2b; color: #ffffff;")
 
-        # Cho phép image_label nhận focus và click events
+        # Cho phép image_label nhận focus và mouse events
         self.image_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.image_label.mousePressEvent = self._image_label_mouse_press
+        self.image_label.setMouseTracking(True)  # Bật theo dõi di chuyển chuột
 
         parent_layout.addWidget(self.image_label)
 
@@ -130,9 +134,90 @@ class RemoteWidget(QWidget):
         logger.debug(f"RemoteWidget unfocused for session: {self.session_id}")
 
     def mousePressEvent(self, event):
-        """Đảm bảo widget nhận focus khi click."""
+        """Xử lý sự kiện nhấn chuột."""
         self.setFocus()
+        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        if scaled_pos:
+            button = self._map_qt_button(event.button())
+            self.mouse_event_occurred.emit("PRESS", scaled_pos, button, (0, 0))
         super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """Xử lý sự kiện nhả chuột."""
+        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        if scaled_pos:
+            button = self._map_qt_button(event.button())
+            self.mouse_event_occurred.emit("RELEASE", scaled_pos, button, (0, 0))
+        super().mouseReleaseEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Xử lý sự kiện di chuyển chuột."""
+        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        if scaled_pos:
+            self.mouse_event_occurred.emit("MOVE", scaled_pos, "UNKNOWN", (0, 0))
+        super().mouseMoveEvent(event)
+
+    def wheelEvent(self, event):
+        """Xử lý sự kiện cuộn chuột."""
+        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        if scaled_pos:
+            # Qt5: angleDelta() trả về QPoint với x (horizontal) và y (vertical)
+            delta = event.angleDelta()
+            scroll_delta = (delta.x() // 120, delta.y() // 120)  # Chia 120 để chuẩn hóa
+            self.mouse_event_occurred.emit(
+                "SCROLL", scaled_pos, "UNKNOWN", scroll_delta
+            )
+        super().wheelEvent(event)
+
+    def _get_scaled_mouse_position(self, pos):
+        """Tính toán vị trí chuột theo tỉ lệ với kích thước ảnh gốc."""
+        if not self._current_pixmap:
+            return None
+
+        # Lấy kích thước của label và pixmap gốc
+        label_size = self.image_label.size()
+        pixmap_size = self._current_pixmap.size()
+
+        # Tính toán scaled size giữ aspect ratio
+        scaled_pixmap = self._current_pixmap.scaled(
+            label_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+        scaled_size = scaled_pixmap.size()
+
+        # Tính offset để center image trong label
+        offset_x = (label_size.width() - scaled_size.width()) // 2
+        offset_y = (label_size.height() - scaled_size.height()) // 2
+
+        # Chuyển đổi từ tọa độ widget sang tọa độ image_label
+        label_pos = self.image_label.mapFrom(self, pos)
+        x = label_pos.x() - offset_x
+        y = label_pos.y() - offset_y
+
+        # Kiểm tra xem chuột có nằm trong vùng ảnh không
+        if x < 0 or y < 0 or x >= scaled_size.width() or y >= scaled_size.height():
+            return None
+
+        # Tính toán tỉ lệ và chuyển đổi về tọa độ gốc
+        scale_x = pixmap_size.width() / scaled_size.width()
+        scale_y = pixmap_size.height() / scaled_size.height()
+
+        original_x = int(x * scale_x)
+        original_y = int(y * scale_y)
+
+        return (original_x, original_y)
+
+    def _map_qt_button(self, qt_button):
+        """Chuyển đổi Qt button sang string button."""
+        if qt_button == Qt.MouseButton.LeftButton:
+            return "LEFT"
+        elif qt_button == Qt.MouseButton.RightButton:
+            return "RIGHT"
+        elif qt_button == Qt.MouseButton.MiddleButton:
+            return "MIDDLE"
+        else:
+            return "UNKNOWN"
 
     def _image_label_mouse_press(self, event):
         """Xử lý click vào image label để focus widget."""

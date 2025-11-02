@@ -5,11 +5,13 @@ from client.managers.client_manager import ClientManager
 from client.controllers.main_window_controller import main_window_controller
 from client.managers.session_manager import SessionManager
 from client.services.keyboard_executor_service import KeyboardExecutorService
+from client.services.mouse_executor_service import MouseExecutorService
 from common.packets import (
     AssignIdPacket,
     ConnectionRequestPacket,
     ConnectionResponsePacket,
     KeyboardPacket,
+    MousePacket,
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
@@ -32,6 +34,7 @@ class ReceiveHandler:
             VideoConfigPacket: cls.__handle_video_config_packet,
             VideoStreamPacket: cls.__handle_video_stream_packet,
             KeyboardPacket: cls.__handle_keyboard_packet,
+            MousePacket: cls.__handle_mouse_packet,
         }
         handler = packet_handlers.get(type(packet))
         if handler:
@@ -221,4 +224,26 @@ class ReceiveHandler:
         KeyboardExecutorService.execute_keyboard_event(packet)
         logger.debug(
             f"Executed keyboard event: {packet.event_type.value} - {packet.key_type.value} - {packet.key_value}"
+        )
+
+    @staticmethod
+    def __handle_mouse_packet(packet: MousePacket):
+        """Xử lý MousePacket - thực thi sự kiện chuột trên máy host"""
+        if (
+            not hasattr(packet, "event_type")
+            or not hasattr(packet, "position")
+            or not hasattr(packet, "button")
+            or not hasattr(packet, "scroll_delta")
+        ):
+            logger.error("Invalid mouse packet")
+            return
+
+        if not packet.event_type or packet.position is None:
+            logger.error("Received MousePacket with empty fields.")
+            return
+
+        # Thực thi sự kiện chuột
+        MouseExecutorService.execute_mouse_event(packet)
+        logger.debug(
+            f"Executed mouse event: {packet.event_type.value} - Position: {packet.position} - Button: {packet.button.value}"
         )
