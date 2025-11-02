@@ -1,1 +1,9 @@
 * text eol=lf
+
+*.png binary
+*.svg binary
+
+*.ttf binary
+
+*.cur binary
+*.ani binary
