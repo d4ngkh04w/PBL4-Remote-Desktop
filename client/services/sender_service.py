@@ -28,7 +28,7 @@ class SenderService:
         """Worker thread để gửi dữ liệu từ hàng đợi."""
         while not cls.__shutdown_event.is_set():
             try:
-                packet = cls.__queue.get(timeout=1)
+                packet = cls.__queue.get(timeout=0.01)
                 if cls.__socket:
                     Protocol.send_packet(cls.__socket, packet)
                 else:

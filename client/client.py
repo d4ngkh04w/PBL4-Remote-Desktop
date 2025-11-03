@@ -139,9 +139,6 @@ class RemoteDesktopClient:
                 logger.error("Failed to initialize services")
                 return False
 
-            from client.controllers.main_window_controller import main_window_controller
-
-            main_window_controller.on_connection_established
             return True
 
         except Exception as e:

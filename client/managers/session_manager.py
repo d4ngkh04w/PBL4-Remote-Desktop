@@ -60,11 +60,7 @@ class SessionManager:
         """Xử lý dữ liệu config video cho session."""
         session = cls._sessions.get(session_id)
 
-        if (
-            not session
-            or not session.widget
-            or not hasattr(session.widget, "controller")
-        ):
+        if not session or not session.widget:
             logger.warning(
                 f"Cannot handle config data for unknown or incomplete session: {session_id}"
             )
@@ -96,12 +92,7 @@ class SessionManager:
             return
 
         session = cls._sessions.get(session_id)
-        if (
-            not session
-            or not session.decoder
-            or not session.widget
-            or not hasattr(session.widget, "controller")
-        ):
+        if not session or not session.decoder or not session.widget:
             logger.warning(f"Incomplete session resources for session: {session_id}")
             return
 

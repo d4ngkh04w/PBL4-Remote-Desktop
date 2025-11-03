@@ -16,10 +16,8 @@ class MainWindowController(QObject):
     """
 
     # --- Signals gửi đi cho View ---
-    status_updated = pyqtSignal(str)
     id_updated = pyqtSignal(str)
     password_updated = pyqtSignal(str)
-    tabs_state_changed = pyqtSignal(bool)
     notification_requested = pyqtSignal(
         str, str
     )  # message, type ('info', 'warning', 'error')
@@ -33,32 +31,24 @@ class MainWindowController(QObject):
 
     def __init__(self):
         super().__init__()
-        if getattr(self, "_initialized", False):
-            return
-        self._initialized = True
-
-        self._running = False
+        self.__running = False
         logger.debug("MainWindowController initialized.")
 
     def start(self):
-        if self._running:
+        if self.__running:
             return
-        self._running = True
+        self.__running = True
         logger.debug("MainWindowController started.")
 
     def stop(self):
-        if not self._running:
+        if not self.__running:
             return
-        self._running = False
+        self.__running = False
         logger.debug("MainWindowController stopped.")
 
     # --- Xử lý sự kiện từ các thành phần khác của ứng dụng ---
 
-    def on_connection_established(self):
-        self.status_updated.emit("Connected to server")
-
     def on_connection_failed(self):
-        self.status_updated.emit("Failed to connect to server")
         self.id_updated.emit("Connection Failed")
         self.notification_requested.emit(
             "Could not connect to the server. Please check your connection and restart.",
@@ -68,12 +58,12 @@ class MainWindowController(QObject):
     def on_client_id_received(self):
         client_id = ClientManager.get_client_id()
         self.id_updated.emit(format_numeric_id(client_id))
-        self.tabs_state_changed.emit(True)
         # Sau khi load client ID, custom password cũng đã được load, cần cập nhật UI
         self.custom_password_changed.emit()
 
-    def on_ui_update_status(self, status: str):
-        self.status_updated.emit(status)
+    def on_connection_rejected(self):
+        """Re-enable connect button when connection is rejected"""
+        self.connect_button_state_changed.emit(True, "")
 
     def on_ui_show_notification(self, message: str, type: str):
         self.notification_requested.emit(message, type)
@@ -98,20 +88,17 @@ class MainWindowController(QObject):
             )
             return
 
-        # Logic nghiệp vụ thành công, gửi yêu cầu và cập nhật UI
         from client.handlers.send_handler import SendHandler
 
         SendHandler.send_connection_request_packet(host_id, host_pass)
 
-        self.connect_button_state_changed.emit(False, "🔄 Connecting...")
-        self.status_updated.emit(f"Sending connection request to {host_id}...")
+        self.connect_button_state_changed.emit(False, "Connecting...")
 
     def request_new_password(self):
         """Tạo mật khẩu mới và yêu cầu View cập nhật."""
         ClientManager.generate_new_password()
         password = ClientManager.get_password()
         self.password_updated.emit(password)
-        self.status_updated.emit("New password generated.")
 
     def request_copy_id(self):
         """Lấy ID và yêu cầu View sao chép vào clipboard."""
@@ -139,7 +126,6 @@ class MainWindowController(QObject):
             self.notification_requested.emit(
                 "Custom password has been set successfully!", "info"
             )
-            self.status_updated.emit("Custom password activated.")
             self.custom_password_changed.emit()  # Thông báo UI cập nhật
 
     def request_remove_custom_password(self):
@@ -213,7 +199,6 @@ class MainWindowController(QObject):
             self.notification_requested.emit(
                 "Custom password has been removed.", "info"
             )
-            self.status_updated.emit("Custom password deactivated.")
             self.custom_password_changed.emit()  # Thông báo UI cập nhật
 
     # --- Dọn dẹp ---

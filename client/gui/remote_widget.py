@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QSizePolicy,
 )
-from PyQt5.QtGui import QPixmap, QMouseEvent
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 
 from client.controllers.remote_widget_controller import RemoteWidgetController
@@ -29,8 +29,11 @@ class RemoteWidget(QWidget):
         super().__init__()
         self.session_id = session_id
         self.controller = RemoteWidgetController(self, self.session_id)
-        self._cleanup_done = False
-        self._current_pixmap = None  # Lưu pixmap gốc để re-scale khi resize
+        self.__cleanup_done = False
+        self.__current_pixmap = None  # Lưu pixmap gốc để re-scale khi resize
+        self.__last_mouse_pos = (
+            None  # Lưu vị trí chuột cuối cùng để tránh gửi duplicate
+        )
 
         # Cho phép widget nhận focus để lắng nghe sự kiện bàn phím và chuột
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -68,9 +71,9 @@ class RemoteWidget(QWidget):
     def update_frame(self, pixmap: QPixmap):
         """Nhận và hiển thị frame đã được giải mã từ controller."""
         # Lưu pixmap gốc
-        self._current_pixmap = pixmap
+        self.__current_pixmap = pixmap
         # Scale và hiển thị
-        self._scale_and_display()
+        self.__scale_and_display()
 
     @pyqtSlot(str)
     def show_error(self, message: str):
@@ -78,13 +81,13 @@ class RemoteWidget(QWidget):
         self.image_label.clear()
         self.image_label.setText(f"❌ Error: {message}")
 
-    def _scale_and_display(self):
+    def __scale_and_display(self):
         """Scale pixmap gốc và hiển thị vừa với widget."""
-        if not self._current_pixmap:
+        if not self.__current_pixmap:
             return
 
         # Scale pixmap để vừa với label nhưng giữ aspect ratio
-        scaled_pixmap = self._current_pixmap.scaled(
+        scaled_pixmap = self.__current_pixmap.scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
@@ -133,33 +136,53 @@ class RemoteWidget(QWidget):
         self.widget_unfocused.emit()
         logger.debug(f"RemoteWidget unfocused for session: {self.session_id}")
 
+    def leaveEvent(self, event):
+        """Xử lý khi chuột rời khỏi widget - hiển thị lại con chuột."""
+        super().leaveEvent(event)
+        self.unsetCursor()
+        self.__last_mouse_pos = None
+        # Bỏ debug log để giảm overhead
+
     def mousePressEvent(self, event):
         """Xử lý sự kiện nhấn chuột."""
         self.setFocus()
-        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        scaled_pos = self.__get_scaled_mouse_position(event.pos())
         if scaled_pos:
-            button = self._map_qt_button(event.button())
+            button = self.__map_qt_button(event.button())
             self.mouse_event_occurred.emit("PRESS", scaled_pos, button, (0, 0))
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         """Xử lý sự kiện nhả chuột."""
-        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        scaled_pos = self.__get_scaled_mouse_position(event.pos())
         if scaled_pos:
-            button = self._map_qt_button(event.button())
+            button = self.__map_qt_button(event.button())
             self.mouse_event_occurred.emit("RELEASE", scaled_pos, button, (0, 0))
         super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
         """Xử lý sự kiện di chuyển chuột."""
-        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        scaled_pos = self.__get_scaled_mouse_position(event.pos())
+
+        # Bỏ qua nếu vị trí không thay đổi
+        if scaled_pos == self.__last_mouse_pos:
+            return
+
         if scaled_pos:
+            # Ẩn con chuột khi di chuyển trên vùng màn hình share
+            self.setCursor(Qt.CursorShape.BlankCursor)
             self.mouse_event_occurred.emit("MOVE", scaled_pos, "UNKNOWN", (0, 0))
+            self.__last_mouse_pos = scaled_pos
+        else:
+            # Hiển thị lại con chuột khi ra ngoài vùng màn hình share
+            self.unsetCursor()
+            self.__last_mouse_pos = None
+
         super().mouseMoveEvent(event)
 
     def wheelEvent(self, event):
         """Xử lý sự kiện cuộn chuột."""
-        scaled_pos = self._get_scaled_mouse_position(event.pos())
+        scaled_pos = self.__get_scaled_mouse_position(event.pos())
         if scaled_pos:
             # Qt5: angleDelta() trả về QPoint với x (horizontal) và y (vertical)
             delta = event.angleDelta()
@@ -169,26 +192,30 @@ class RemoteWidget(QWidget):
             )
         super().wheelEvent(event)
 
-    def _get_scaled_mouse_position(self, pos):
+    def __get_scaled_mouse_position(self, pos):
         """Tính toán vị trí chuột theo tỉ lệ với kích thước ảnh gốc."""
-        if not self._current_pixmap:
+        if not self.__current_pixmap:
             return None
 
         # Lấy kích thước của label và pixmap gốc
         label_size = self.image_label.size()
-        pixmap_size = self._current_pixmap.size()
+        pixmap_size = self.__current_pixmap.size()
 
-        # Tính toán scaled size giữ aspect ratio
-        scaled_pixmap = self._current_pixmap.scaled(
-            label_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation,
-        )
-        scaled_size = scaled_pixmap.size()
+        # Tính toán scaled size giữ aspect ratio - sử dụng FastTransformation cho tốc độ
+        # Không cần scale pixmap thật, chỉ cần tính toán kích thước
+        pixmap_width = pixmap_size.width()
+        pixmap_height = pixmap_size.height()
+        label_width = label_size.width()
+        label_height = label_size.height()
+
+        # Tính scale factor giữ aspect ratio
+        scale_factor = min(label_width / pixmap_width, label_height / pixmap_height)
+        scaled_width = int(pixmap_width * scale_factor)
+        scaled_height = int(pixmap_height * scale_factor)
 
         # Tính offset để center image trong label
-        offset_x = (label_size.width() - scaled_size.width()) // 2
-        offset_y = (label_size.height() - scaled_size.height()) // 2
+        offset_x = (label_width - scaled_width) // 2
+        offset_y = (label_height - scaled_height) // 2
 
         # Chuyển đổi từ tọa độ widget sang tọa độ image_label
         label_pos = self.image_label.mapFrom(self, pos)
@@ -196,19 +223,19 @@ class RemoteWidget(QWidget):
         y = label_pos.y() - offset_y
 
         # Kiểm tra xem chuột có nằm trong vùng ảnh không
-        if x < 0 or y < 0 or x >= scaled_size.width() or y >= scaled_size.height():
+        if x < 0 or y < 0 or x >= scaled_width or y >= scaled_height:
             return None
 
         # Tính toán tỉ lệ và chuyển đổi về tọa độ gốc
-        scale_x = pixmap_size.width() / scaled_size.width()
-        scale_y = pixmap_size.height() / scaled_size.height()
+        scale_x = pixmap_width / scaled_width
+        scale_y = pixmap_height / scaled_height
 
         original_x = int(x * scale_x)
         original_y = int(y * scale_y)
 
         return (original_x, original_y)
 
-    def _map_qt_button(self, qt_button):
+    def __map_qt_button(self, qt_button):
         """Chuyển đổi Qt button sang string button."""
         if qt_button == Qt.MouseButton.LeftButton:
             return "LEFT"
@@ -229,11 +256,11 @@ class RemoteWidget(QWidget):
         """Xử lý sự kiện thay đổi kích thước cửa sổ."""
         super().resizeEvent(event)
         # Re-scale hình ảnh khi resize window
-        self._scale_and_display()
+        self.__scale_and_display()
 
     def closeEvent(self, event):
         """Xử lý sự kiện đóng cửa sổ."""
-        if not self._cleanup_done:
+        if not self.__cleanup_done:
             # Chỉ gửi disconnect request nếu chưa được cleanup từ bên ngoài
             self.disconnect_requested.emit(self.session_id)
             self.cleanup()
@@ -241,9 +268,9 @@ class RemoteWidget(QWidget):
 
     def cleanup(self):
         """Dọn dẹp tài nguyên."""
-        if self._cleanup_done:
+        if self.__cleanup_done:
             return
-        self._cleanup_done = True
+        self.__cleanup_done = True
         try:
             if self.controller:
                 self.controller.cleanup()

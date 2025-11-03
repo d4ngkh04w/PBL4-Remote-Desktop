@@ -31,11 +31,11 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.config = config
-        self._cleanup_done = False
+        self.__cleanup_done = False
 
         # Variables for window dragging
-        self._drag_pos = QPoint()
-        self._is_maximized = False
+        self.__drag_pos = QPoint()
+        self.__is_maximized = False
 
         # Reference to maximize button for icon switching
         self.maximize_btn: QPushButton | None = None
@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
         # Kết nối signals từ Controller đến slots của View
-        self._connect_controller_signals()
+        self.__connect_controller_signals()
 
         # Bắt đầu controller và yêu cầu dữ liệu ban đầu
         self.controller.start()
@@ -331,20 +331,20 @@ class MainWindow(QMainWindow):
     def title_bar_mouse_press(self, event):
         """Handle mouse press on title bar for dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            self.__drag_pos = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
     def title_bar_mouse_move(self, event):
         """Handle mouse move on title bar for dragging."""
-        if event.buttons() == Qt.MouseButton.LeftButton and not self._is_maximized:
-            self.move(event.globalPos() - self._drag_pos)
+        if event.buttons() == Qt.MouseButton.LeftButton and not self.__is_maximized:
+            self.move(event.globalPos() - self.__drag_pos)
             event.accept()
 
     def toggle_maximize(self):
         """Toggle between maximized and normal state."""
-        if self._is_maximized:
+        if self.__is_maximized:
             self.showNormal()
-            self._is_maximized = False
+            self.__is_maximized = False
             if self.maximize_btn:
                 self.maximize_btn.setIcon(
                     QIcon(
@@ -359,7 +359,7 @@ class MainWindow(QMainWindow):
                 self.maximize_btn.setToolTip("Maximize")
         else:
             self.showMaximized()
-            self._is_maximized = True
+            self.__is_maximized = True
             if self.maximize_btn:
                 self.maximize_btn.setIcon(
                     QIcon(
@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
                 )
                 self.maximize_btn.setToolTip("Restore Down")
 
-    def _connect_controller_signals(self):
+    def __connect_controller_signals(self):
         """Kết nối các signal từ Controller tới các slot cập nhật UI."""
         self.controller.id_updated.connect(self.update_id_display)
         self.controller.password_updated.connect(self.update_password_display)
@@ -515,6 +515,7 @@ class MainWindow(QMainWindow):
         """
         )
         copy_id_btn.setToolTip("Copy ID")
+        copy_id_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_id_btn.clicked.connect(self.controller.request_copy_id)
 
         id_display_layout.addWidget(self.id_label, 1)
@@ -606,6 +607,7 @@ class MainWindow(QMainWindow):
         """
         )
         copy_pass_btn.setToolTip("Copy Password")
+        copy_pass_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_pass_btn.clicked.connect(self.controller.request_copy_password)
 
         refresh_btn = QPushButton()
@@ -639,6 +641,7 @@ class MainWindow(QMainWindow):
         """
         )
         refresh_btn.setToolTip("Refresh Password")
+        refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         refresh_btn.clicked.connect(self.controller.request_new_password)
 
         button_layout.addWidget(copy_pass_btn)
@@ -662,6 +665,7 @@ class MainWindow(QMainWindow):
         custom_pass_layout.setSpacing(20)
 
         set_custom_btn = QPushButton("Set Custom Password")
+        set_custom_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         set_custom_btn.setFixedHeight(36)
         set_custom_btn.setStyleSheet(
             """
@@ -890,6 +894,7 @@ class MainWindow(QMainWindow):
 
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setObjectName("connectBtn")
+        self.connect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.connect_btn.setMinimumHeight(50)
         self.connect_btn.setMinimumWidth(140)
         self.connect_btn.setStyleSheet(
@@ -971,70 +976,79 @@ class MainWindow(QMainWindow):
         """Cập nhật trạng thái của nút Connect."""
         if self.connect_btn:
             self.connect_btn.setEnabled(enabled)
+            if text:  # Chỉ cập nhật text khi có giá trị
+                self.connect_btn.setText(text)
+            elif enabled:  # Reset về text mặc định khi enable lại
+                self.connect_btn.setText("Connect")
 
     @pyqtSlot(str, str)
     def show_notification(self, message: str, notif_type: str):
         """Hiển thị hộp thoại thông báo (Info, Warning, Error)."""
-        msg_box = QMessageBox(self)
-        msg_box.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        msg_box.setText(message)
-
-        image_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "assets",
-            "images",
-        )
-
-        # Set icon based on type
-        if notif_type == "error":
-            msg_box.setIconPixmap(
-                QIcon(os.path.join(image_path, "error.png")).pixmap(64, 64)
+        try:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowFlags(
+                Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
             )
-        elif notif_type == "warning":
-            msg_box.setIconPixmap(
-                QIcon(os.path.join(image_path, "warning.png")).pixmap(64, 64)
-            )
-        else:
-            msg_box.setIconPixmap(
-                QIcon(os.path.join(image_path, "info.png")).pixmap(64, 64)
+            msg_box.setText(message)
+
+            image_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "assets",
+                "images",
             )
 
-        # Apply dark theme styling
-        msg_box.setStyleSheet(
+            # Set icon based on type
+            if notif_type == "error":
+                msg_box.setIconPixmap(
+                    QIcon(os.path.join(image_path, "error.png")).pixmap(64, 64)
+                )
+            elif notif_type == "warning":
+                msg_box.setIconPixmap(
+                    QIcon(os.path.join(image_path, "warning.png")).pixmap(64, 64)
+                )
+            else:
+                msg_box.setIconPixmap(
+                    QIcon(os.path.join(image_path, "info.png")).pixmap(64, 64)
+                )
+
+            # Apply dark theme styling
+            msg_box.setStyleSheet(
+                """
+                QMessageBox {
+                    background-color: #1a1a1a;
+                    color: #e8e8e8;
+                    border: 2px solid #2d2d2d;
+                    border-radius: 10px;
+                    padding: 3px;
+                    margin: -1px;
+                }
+                QMessageBox QLabel {
+                    color: #e8e8e8;
+                    font-size: 13px;
+                }
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border: 1px solid #404040;
+                    border-radius: 6px;
+                    padding: 8px 24px;
+                    color: #e8e8e8;
+                    font-size: 13px;
+                    font-weight: 500;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #3a3a3a;
+                    border: 1px solid #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #242424;
+                }
             """
-            QMessageBox {
-                background-color: #1a1a1a;
-                color: #e8e8e8;
-                border: 2px solid #2d2d2d;
-                border-radius: 10px;
-                padding: 3px;
-                margin: -1px;
-            }
-            QMessageBox QLabel {
-                color: #e8e8e8;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 8px 24px;
-                color: #e8e8e8;
-                font-size: 13px;
-                font-weight: 500;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #505050;
-            }
-            QPushButton:pressed {
-                background-color: #242424;
-            }
-        """
-        )
+            )
 
-        msg_box.exec()
+            msg_box.exec()
+        except Exception as e:
+            logger.error(f"Error showing notification: {e}", exc_info=True)
 
     @pyqtSlot(str, str)
     def perform_clipboard_copy(self, type_label: str, content: str):
@@ -1075,17 +1089,17 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Xử lý sự kiện đóng cửa sổ chính."""
-        if not self._cleanup_done:
+        if not self.__cleanup_done:
             self.cleanup()
         event.accept()
 
     def cleanup(self):
         """Dọn dẹp tài nguyên khi ứng dụng đóng."""
-        if self._cleanup_done:
+        if self.__cleanup_done:
             return
 
         logger.info("Cleaning up MainWindow...")
-        self._cleanup_done = True
+        self.__cleanup_done = True
 
         try:
             # Dọn dẹp controller (sẽ tự động gửi end session cho tất cả sessions)

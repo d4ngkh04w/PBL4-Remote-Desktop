@@ -77,57 +77,57 @@ class CentralizedPerformanceMonitor:
     """Monitor performance của centralized screen sharing."""
 
     def __init__(self):
-        self._metrics = PerformanceMetrics()
-        self._lock = RLock()
-        self._last_log_time = time.perf_counter()
-        self._log_interval = 10.0  # Log mỗi 10 giây
+        self.__metrics = PerformanceMetrics()
+        self.__lock = RLock()
+        self.__last_log_time = time.perf_counter()
+        self.__log_interval = 10.0  # Log mỗi 10 giây
 
     def record_frame_sent(self, frame_size_bytes: int, sessions_count: int):
         """Ghi nhận frame được gửi."""
-        with self._lock:
-            self._metrics.add_frame(frame_size_bytes, sessions_count)
-            self._maybe_log_stats()
+        with self.__lock:
+            self.__metrics.add_frame(frame_size_bytes, sessions_count)
+            self.__maybe_log_stats()
 
-    def _maybe_log_stats(self):
+    def __maybe_log_stats(self):
         """Log statistics định kỳ."""
         current_time = time.perf_counter()
-        if current_time - self._last_log_time >= self._log_interval:
-            self._log_performance_stats()
-            self._last_log_time = current_time
+        if current_time - self.__last_log_time >= self.__log_interval:
+            self.__log_performance_stats()
+            self.__last_log_time = current_time
 
-    def _log_performance_stats(self):
+    def __log_performance_stats(self):
         """Log các thống kê performance."""
-        with self._lock:
-            avg_fps = self._metrics.get_average_fps()
-            data_rate = self._metrics.get_data_rate_mbps()
-            efficiency = self._metrics.get_efficiency_ratio()
+        with self.__lock:
+            avg_fps = self.__metrics.get_average_fps()
+            data_rate = self.__metrics.get_data_rate_mbps()
+            efficiency = self.__metrics.get_efficiency_ratio()
 
             logger.info(
                 f"📊 Centralized Screen Share Performance:\n"
-                f"  • Active Sessions: {self._metrics.sessions_count}\n"
-                f"  • Frames Sent: {self._metrics.frames_sent}\n"
+                f"  • Active Sessions: {self.__metrics.sessions_count}\n"
+                f"  • Frames Sent: {self.__metrics.frames_sent}\n"
                 f"  • Average FPS: {avg_fps:.1f}\n"
                 f"  • Data Rate: {data_rate:.2f} Mbps\n"
                 f"  • Efficiency Ratio: {efficiency:.2f}x\n"
-                f"  • Total Data: {self._metrics.bytes_sent / 1024 / 1024:.1f} MB"
+                f"  • Total Data: {self.__metrics.bytes_sent / 1024 / 1024:.1f} MB"
             )
 
     def get_current_stats(self) -> Dict[str, float]:
         """Lấy stats hiện tại."""
-        with self._lock:
+        with self.__lock:
             return {
-                "sessions_count": self._metrics.sessions_count,
-                "frames_sent": self._metrics.frames_sent,
-                "average_fps": self._metrics.get_average_fps(),
-                "data_rate_mbps": self._metrics.get_data_rate_mbps(),
-                "efficiency_ratio": self._metrics.get_efficiency_ratio(),
-                "total_mb": self._metrics.bytes_sent / 1024 / 1024,
+                "sessions_count": self.__metrics.sessions_count,
+                "frames_sent": self.__metrics.frames_sent,
+                "average_fps": self.__metrics.get_average_fps(),
+                "data_rate_mbps": self.__metrics.get_data_rate_mbps(),
+                "efficiency_ratio": self.__metrics.get_efficiency_ratio(),
+                "total_mb": self.__metrics.bytes_sent / 1024 / 1024,
             }
 
     def reset_metrics(self):
         """Reset metrics."""
-        with self._lock:
-            self._metrics = PerformanceMetrics()
+        with self.__lock:
+            self.__metrics = PerformanceMetrics()
             logger.info("Performance metrics reset")
 
 

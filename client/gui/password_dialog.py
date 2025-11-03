@@ -27,7 +27,7 @@ class PasswordDialog(QDialog):
         self.setMinimumWidth(450)
 
         # Variables for window dragging
-        self._drag_pos = QPoint()
+        self.__drag_pos = QPoint()
 
         # Apply dark theme
         self.setStyleSheet(
@@ -88,9 +88,9 @@ class PasswordDialog(QDialog):
         # Biến lưu mật khẩu
         self.password = ""
 
-        self._setup_ui()
+        self.__setup_ui()
 
-    def _setup_ui(self):
+    def __setup_ui(self):
         """Thiết lập giao diện"""
         # Main layout container
         main_layout = QVBoxLayout(self)
@@ -98,7 +98,7 @@ class PasswordDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # Add custom title bar
-        title_bar = self._create_title_bar()
+        title_bar = self.__create_title_bar()
         main_layout.addWidget(title_bar)
 
         # Content layout
@@ -162,7 +162,7 @@ class PasswordDialog(QDialog):
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setPlaceholderText("Enter password (min 6 characters)")
         self.password_input.setMinimumHeight(45)
-        self.password_input.textChanged.connect(self._on_text_changed)
+        self.password_input.textChanged.connect(self.__on_text_changed)
         layout.addWidget(self.password_input)
 
         # Confirm password input
@@ -181,7 +181,7 @@ class PasswordDialog(QDialog):
         self.confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.confirm_input.setPlaceholderText("Re-enter password")
         self.confirm_input.setMinimumHeight(45)
-        self.confirm_input.textChanged.connect(self._on_text_changed)
+        self.confirm_input.textChanged.connect(self.__on_text_changed)
         layout.addWidget(self.confirm_input)
 
         # Error label
@@ -196,14 +196,16 @@ class PasswordDialog(QDialog):
         button_layout.setSpacing(12)
 
         self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cancel_button.setMinimumHeight(45)
         self.cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_button)
 
         self.ok_button = QPushButton("Set Password")
+        self.ok_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ok_button.setMinimumHeight(45)
         self.ok_button.setEnabled(False)
-        self.ok_button.clicked.connect(self._on_ok_clicked)
+        self.ok_button.clicked.connect(self.__on_ok_clicked)
         self.ok_button.setStyleSheet(
             """
             QPushButton:enabled {
@@ -236,7 +238,7 @@ class PasswordDialog(QDialog):
         # Focus on first input
         self.password_input.setFocus()
 
-    def _create_title_bar(self):
+    def __create_title_bar(self):
         """Tạo custom title bar cho dialog"""
         title_bar = QFrame()
         title_bar.setStyleSheet(
@@ -316,24 +318,27 @@ class PasswordDialog(QDialog):
         title_layout.addWidget(close_btn)
 
         # Make title bar draggable
-        title_bar.mousePressEvent = self._title_bar_mouse_press
-        title_bar.mouseMoveEvent = self._title_bar_mouse_move
+        title_bar.mousePressEvent = self.__title_bar_mouse_press
+        title_bar.mouseMoveEvent = self.__title_bar_mouse_move
 
         return title_bar
 
-    def _title_bar_mouse_press(self, event):
+    def __title_bar_mouse_press(self, event):
         """Handle mouse press on title bar for dragging"""
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            self.__drag_pos = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
-    def _title_bar_mouse_move(self, event):
+    def __title_bar_mouse_move(self, event):
         """Handle mouse move on title bar for dragging"""
-        if event.buttons() == Qt.MouseButton.LeftButton and not self._drag_pos.isNull():
-            self.move(event.globalPos() - self._drag_pos)
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and not self.__drag_pos.isNull()
+        ):
+            self.move(event.globalPos() - self.__drag_pos)
             event.accept()
 
-    def _on_text_changed(self):
+    def __on_text_changed(self):
         """Xử lý khi text thay đổi - validate real-time"""
         password = self.password_input.text()
         confirm = self.confirm_input.text()
@@ -365,7 +370,7 @@ class PasswordDialog(QDialog):
         self.error_label.setStyleSheet("color: #4ec9b0; font-size: 12px;")
         self.ok_button.setEnabled(True)
 
-    def _on_ok_clicked(self):
+    def __on_ok_clicked(self):
         """Xử lý khi click OK"""
         password = self.password_input.text()
         confirm = self.confirm_input.text()

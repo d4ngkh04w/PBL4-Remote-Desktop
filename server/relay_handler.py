@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class RelayHandler:
     __stream_pool = ThreadPoolExecutor(
-        max_workers=min((os.cpu_count() or 4) * 20, 200),
+        max_workers=min((os.cpu_count() or 4) * 30, 250),
         thread_name_prefix="StreamRelay",
     )
     __control_pool = ThreadPoolExecutor(

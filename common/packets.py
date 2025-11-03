@@ -1,5 +1,4 @@
 from common.enums import (
-    PacketType,
     KeyBoardEventType,
     MouseEventType,
     MouseButton,
@@ -8,94 +7,82 @@ from common.enums import (
 )
 
 
-class BasePacket:
-    """
-    Lớp cơ sở cho tất cả các gói tin
-    """
-
-    def __init__(self, packet_type: PacketType):
-        self.packet_type = packet_type
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(type={self.packet_type})"
-
-
-class ClientInformationPacket(BasePacket):
+class ClientInformationPacket:
     """Thông tin của client"""
 
     def __init__(self, os: str, host_name: str, device_id: str):
-        super().__init__(PacketType.CLIENT_INFORMATION)
+        # super().__init__(PacketType.CLIENT_INFORMATION)
         self.os = os
         self.host_name = host_name
         self.device_id = device_id
 
 
-class AssignIdPacket(BasePacket):
+class AssignIdPacket:
     """
     Server cấp ID cho client
     """
 
     def __init__(self, client_id: str):
-        super().__init__(PacketType.ASSIGN_ID)
+        # super().__init__(PacketType.ASSIGN_ID)
         self.client_id = client_id
 
     def __repr__(self):
-        return f"AssignIdPacket(type={self.packet_type}, client_id={self.client_id})"
+        return f"AssignIdPacket(client_id={self.client_id})"
 
 
-class ConnectionRequestPacket(BasePacket):
+class ConnectionRequestPacket:
     """
     Yêu cầu kết nối từ controller -> host
     """
 
     def __init__(self, sender_id: str, receiver_id: str, password: str):
-        super().__init__(PacketType.CONNECTION_REQUEST)
+        # super().__init__(PacketType.CONNECTION_REQUEST)
         self.sender_id = sender_id
         self.receiver_id = receiver_id
         self.password = password
 
     def __repr__(self):
-        return f"ConnectionRequestPacket(type={self.packet_type}, sender_id={self.sender_id}, receiver_id={self.receiver_id})"
+        return f"ConnectionRequestPacket(sender_id={self.sender_id}, receiver_id={self.receiver_id})"
 
 
-class AuthenticationPasswordPacket(BasePacket):
+class AuthenticationPasswordPacket:
     """Gói tin xác thực mật khẩu"""
 
     def __init__(self, status: Status = Status.SUCCESS, receiver_id: str = ""):
-        super().__init__(PacketType.AUTH_PASSWORD)
+        # super().__init__(PacketType.AUTH_PASSWORD)
         self.status = status
         self.receiver_id = receiver_id
 
     def __repr__(self):
-        return f"AuthenticationPassword(type={self.packet_type}, status={self.status}, receiver_id={self.receiver_id})"
+        return f"AuthenticationPassword(status={self.status}, receiver_id={self.receiver_id})"
 
 
-class ConnectionResponsePacket(BasePacket):
+class ConnectionResponsePacket:
     def __init__(self, connection_status: Status, message: str):
-        super().__init__(PacketType.CONNECTION_RESPONSE)
+        # super().__init__(PacketType.CONNECTION_RESPONSE)
         self.connection_status = connection_status
         self.message = message
 
     def __repr__(self):
-        return f"ConnectionResponsePacket(type={self.packet_type}, connection_status={self.connection_status}, message={self.message})"
+        return f"ConnectionResponsePacket(connection_status={self.connection_status}, message={self.message})"
 
 
-class SessionPacket(BasePacket):
+class SessionPacket:
     """
     Gói tin chứa thông tin phiên làm việc
     """
 
     def __init__(self, status: Status, session_id: str, role: str | None = None):
-        super().__init__(PacketType.SESSION)
+        # super().__init__(PacketType.SESSION)
         self.status = status
         self.session_id = session_id
         self.role = role
 
     def __repr__(self):
-        return f"SessionPacket(type={self.packet_type}, status={self.status}), session_id={self.session_id})"
+        return f"SessionPacket(status={self.status}), session_id={self.session_id})"
 
 
-class VideoStreamPacket(BasePacket):
+class VideoStreamPacket:
     """
     Gói tin chứa luồng video
     """
@@ -105,15 +92,15 @@ class VideoStreamPacket(BasePacket):
         session_id: str | None,
         video_data: bytes,
     ):
-        super().__init__(PacketType.VIDEO_STREAM)
+        # super().__init__(PacketType.VIDEO_STREAM)
         self.video_data = video_data
         self.session_id = session_id
 
     def __repr__(self):
-        return f"VideoStreamPacket(type={self.packet_type}, size={len(self.video_data)}, session_id={self.session_id})"
+        return f"VideoStreamPacket(size={len(self.video_data)}, session_id={self.session_id})"
 
 
-class VideoConfigPacket(BasePacket):
+class VideoConfigPacket:
     """
     Packet cấu hình video
     """
@@ -127,7 +114,7 @@ class VideoConfigPacket(BasePacket):
         codec: str,
         extradata: bytes,
     ):
-        super().__init__(PacketType.VIDEO_CONFIG)
+        # super().__init__(PacketType.VIDEO_CONFIG)
         self.session_id = session_id
         self.width = width
         self.height = height
@@ -136,7 +123,7 @@ class VideoConfigPacket(BasePacket):
         self.extradata = extradata  # SPS/PPS
 
 
-class KeyboardPacket(BasePacket):
+class KeyboardPacket:
     """
     Gói tin bàn phím
     """
@@ -148,17 +135,17 @@ class KeyboardPacket(BasePacket):
         key_value: str | int | list[str],
         session_id: str | None = None,
     ):
-        super().__init__(PacketType.KEYBOARD)
+        # super().__init__(PacketType.KEYBOARD)
         self.session_id = session_id
         self.event_type = event_type
         self.key_type = key_type
         self.key_value = key_value
 
     def __repr__(self):
-        return f"KeyBoardPacket(type={self.packet_type}, event_type={self.event_type}, key_type={self.key_type}, key_value={self.key_value})"
+        return f"KeyBoardPacket(event_type={self.event_type}, key_type={self.key_type}, key_value={self.key_value})"
 
 
-class MousePacket(BasePacket):
+class MousePacket:
     """
     Gói tin chuột
     """
@@ -171,7 +158,7 @@ class MousePacket(BasePacket):
         scroll_delta: tuple[int, int] = (0, 0),
         session_id: str | None = None,
     ):
-        super().__init__(PacketType.MOUSE)
+        # super().__init__(PacketType.MOUSE)
         self.session_id = session_id
         self.event_type = event_type
         self.button = button
@@ -179,7 +166,7 @@ class MousePacket(BasePacket):
         self.scroll_delta = scroll_delta
 
     def __repr__(self):
-        return f"MousePacket(type={self.packet_type}, event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
+        return f"MousePacket(event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
 Packet = (

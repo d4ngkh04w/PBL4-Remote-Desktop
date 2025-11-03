@@ -50,9 +50,6 @@ class SafeDeserializer:
         except (pickle.PickleError, pickle.UnpicklingError, EOFError) as e:
             raise ValueError(f"Failed to deserialize packet: {e}")
 
-        if not hasattr(packet, "packet_type"):
-            raise ValueError("Deserialized object is missing packet_type attribute")
-
         valid_types = tuple(cls.ALLOWED_CLASSES.values())
         if not isinstance(packet, valid_types):
             raise ValueError(
