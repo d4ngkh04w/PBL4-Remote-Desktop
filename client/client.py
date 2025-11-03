@@ -27,7 +27,7 @@ class RemoteDesktopClient:
     của ứng dụng client (GUI).
     """
 
-    def __init__(self, server_host, server_port, use_ssl, cert_file, fps=30):
+    def __init__(self, server_host, server_port, use_ssl, cert_file, fps=25):
         self.config = {
             "server_host": server_host,
             "server_port": server_port,
@@ -42,7 +42,6 @@ class RemoteDesktopClient:
     def __initialize_qt_application(self):
         """Khởi tạo ứng dụng QApplication."""
         try:
-            # Fix Windows taskbar icon grouping issue
             if sys.platform == "win32":
                 import ctypes
 
@@ -172,8 +171,8 @@ class RemoteDesktopClient:
         """Khởi tạo dịch vụ Listener và Sender."""
         try:
             if self.socket:
-                ListenerService.initialize(self.socket)
                 SenderService.initialize(self.socket)
+                ListenerService.initialize(self.socket)
 
                 # Khởi tạo KeyboardExecutorService và MouseExecutorService (cho máy host)
                 KeyboardExecutorService.initialize()

@@ -77,7 +77,7 @@ class Server:
                         continue
 
                     try:
-                        client_socket.settimeout(10)
+                        client_socket.settimeout(1.0)
                         client_info_packet = Protocol.receive_packet(client_socket)
 
                         if not isinstance(client_info_packet, ClientInformationPacket):
@@ -211,8 +211,10 @@ class Server:
                 client_socket, client_id, client_addr, os, host_name, device_id
             )
             logger.info(
-                f"Client {client_id} ({host_name} - {os}) connected from {client_addr}"
+                f"Client {client_id} ({host_name}) connected from {client_addr}"
             )
+
+            client_socket.settimeout(1.0)
 
             sender_thread = threading.Thread(
                 target=self.sender_worker, args=(client_socket, client_id), daemon=True
@@ -223,7 +225,10 @@ class Server:
                 ClientManager.is_client_exist(client_id)
                 and not self.shutdown_event.is_set()
             ):
-                packet = Protocol.receive_packet(client_socket)
+                try:
+                    packet = Protocol.receive_packet(client_socket)
+                except socket.timeout:
+                    continue
                 if not packet:
                     break
 
@@ -231,8 +236,10 @@ class Server:
 
         except ValueError as ve:
             logger.error(f"ValueError in handle_client for {client_id}: {ve}")
+        except ConnectionError:
+            logger.info("Connection closed by client")
         except Exception:
-            pass
+            logger.error(f"Exception in handle_client for {client_id}", exc_info=True)
         finally:
             sessions = SessionManager.get_all_sessions(client_id)
             if sessions:
