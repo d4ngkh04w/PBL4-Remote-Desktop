@@ -120,6 +120,26 @@ class SessionManager:
                 exc_info=True,
             )
 
+    @classmethod
+    def handle_cursor_info(
+        cls, session_id: str, cursor_type: str, position: tuple[int, int], visible: bool
+    ):
+        """Xử lý thông tin cursor nhận được cho session."""
+        session = cls._sessions.get(session_id)
+        if not session or not session.widget:
+            logger.warning(
+                f"Cannot handle cursor info for unknown or incomplete session: {session_id}"
+            )
+            return
+
+        try:
+            session.widget.controller.handle_cursor_info(cursor_type, position, visible)
+        except Exception as e:
+            logger.error(
+                f"Error handling cursor info for session {session_id}: {e}",
+                exc_info=True,
+            )
+
     # ---------
     # Xử lý khi session kết thúc
     # ---------

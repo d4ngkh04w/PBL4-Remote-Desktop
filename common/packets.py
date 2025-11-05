@@ -11,7 +11,6 @@ class ClientInformationPacket:
     """Thông tin của client"""
 
     def __init__(self, os: str, host_name: str, device_id: str):
-        # super().__init__(PacketType.CLIENT_INFORMATION)
         self.os = os
         self.host_name = host_name
         self.device_id = device_id
@@ -23,7 +22,6 @@ class AssignIdPacket:
     """
 
     def __init__(self, client_id: str):
-        # super().__init__(PacketType.ASSIGN_ID)
         self.client_id = client_id
 
     def __repr__(self):
@@ -36,7 +34,6 @@ class ConnectionRequestPacket:
     """
 
     def __init__(self, sender_id: str, receiver_id: str, password: str):
-        # super().__init__(PacketType.CONNECTION_REQUEST)
         self.sender_id = sender_id
         self.receiver_id = receiver_id
         self.password = password
@@ -49,7 +46,6 @@ class AuthenticationPasswordPacket:
     """Gói tin xác thực mật khẩu"""
 
     def __init__(self, status: Status = Status.SUCCESS, receiver_id: str = ""):
-        # super().__init__(PacketType.AUTH_PASSWORD)
         self.status = status
         self.receiver_id = receiver_id
 
@@ -59,7 +55,6 @@ class AuthenticationPasswordPacket:
 
 class ConnectionResponsePacket:
     def __init__(self, connection_status: Status, message: str):
-        # super().__init__(PacketType.CONNECTION_RESPONSE)
         self.connection_status = connection_status
         self.message = message
 
@@ -73,7 +68,6 @@ class SessionPacket:
     """
 
     def __init__(self, status: Status, session_id: str, role: str | None = None):
-        # super().__init__(PacketType.SESSION)
         self.status = status
         self.session_id = session_id
         self.role = role
@@ -92,7 +86,6 @@ class VideoStreamPacket:
         session_id: str | None,
         video_data: bytes,
     ):
-        # super().__init__(PacketType.VIDEO_STREAM)
         self.video_data = video_data
         self.session_id = session_id
 
@@ -114,7 +107,6 @@ class VideoConfigPacket:
         codec: str,
         extradata: bytes,
     ):
-        # super().__init__(PacketType.VIDEO_CONFIG)
         self.session_id = session_id
         self.width = width
         self.height = height
@@ -135,7 +127,6 @@ class KeyboardPacket:
         key_value: str | int | list[str],
         session_id: str | None = None,
     ):
-        # super().__init__(PacketType.KEYBOARD)
         self.session_id = session_id
         self.event_type = event_type
         self.key_type = key_type
@@ -158,7 +149,6 @@ class MousePacket:
         scroll_delta: tuple[int, int] = (0, 0),
         session_id: str | None = None,
     ):
-        # super().__init__(PacketType.MOUSE)
         self.session_id = session_id
         self.event_type = event_type
         self.button = button
@@ -167,6 +157,27 @@ class MousePacket:
 
     def __repr__(self):
         return f"MousePacket(event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
+
+
+class CursorInfoPacket:
+    """
+    Gói tin thông tin cursor
+    """
+
+    def __init__(
+        self,
+        session_id: str | None,
+        cursor_type: str,
+        position: tuple[int, int],
+        visible: bool = True,
+    ):
+        self.session_id = session_id
+        self.cursor_type = cursor_type  # "normal", "text", "hand", "wait", etc.
+        self.position = position  # Vị trí tương đối trên monitor
+        self.visible = visible
+
+    def __repr__(self):
+        return f"CursorInfoPacket(cursor_type={self.cursor_type}, position={self.position}, visible={self.visible}, session_id={self.session_id})"
 
 
 Packet = (
@@ -180,4 +191,5 @@ Packet = (
     | SessionPacket
     | VideoStreamPacket
     | VideoConfigPacket
+    | CursorInfoPacket
 )

@@ -12,7 +12,6 @@ import psutil
 from PIL import Image
 
 if sys.platform == "win32":
-    from PIL import ImageDraw
     import ctypes
     import ctypes.wintypes
 
@@ -210,9 +209,10 @@ def unformat_numeric_id(formatted_id: str) -> str:
 def capture_frame(
     sct_instance: MSSBase,
     monitor: dict,
-    mouse_controller: Controller | None = None,
-    draw_cursor: bool = False,
 ) -> Image.Image | None:
+    """
+    Chụp màn hình.
+    """
     try:
         # Chụp màn hình
         img_bgra = sct_instance.grab(monitor)
@@ -221,83 +221,58 @@ def capture_frame(
             return None
 
         img_pil = Image.frombytes("RGB", img_bgra.size, img_bgra.bgra, "raw", "BGRX")
-
-        if draw_cursor and mouse_controller and sys.platform == "win32":
-            try:
-                # Lấy vị trí chuột toàn cục
-                mouse_x, mouse_y = mouse_controller.position
-
-                # Tính toán vị trí tương đối của chuột trên màn hình đang được chụp
-                monitor_x, monitor_y = monitor["left"], monitor["top"]
-                relative_x = mouse_x - monitor_x
-                relative_y = mouse_y - monitor_y
-
-                # Chỉ vẽ nếu con trỏ nằm trong phạm vi của màn hình này
-                if (
-                    0 <= relative_x < monitor["width"]
-                    and 0 <= relative_y < monitor["height"]
-                ):
-                    # Lấy thông tin cursor hiện tại
-                    cursor_info = get_cursor_info()
-                    cursor_type = "normal"
-
-                    if cursor_info and (cursor_info.flags & CURSOR_SHOWING):
-                        # Xác định loại cursor
-                        cursor_type = get_cursor_type_from_handle(cursor_info.hCursor)
-
-                    # Lấy cursor image tương ứng
-                    cursor_path = get_cursor_image_path(cursor_type)
-                    cursor_img = None
-
-                    if cursor_path:
-                        cursor_img = load_cursor_image(cursor_path)
-
-                    if cursor_img:
-                        # Convert img_pil sang RGBA để hỗ trợ transparency
-                        img_pil = img_pil.convert("RGBA")
-
-                        # Tính toán vị trí paste (hotspot thường ở góc trên bên trái)
-                        # Với cursor tiêu chuẩn, hotspot ở pixel (0, 0)
-                        paste_x = relative_x
-                        paste_y = relative_y
-
-                        # Resize cursor nếu cần (giữ kích thước gốc hoặc scale xuống)
-                        cursor_width, cursor_height = cursor_img.size
-                        if cursor_width > 48 or cursor_height > 48:
-                            # Scale xuống nếu cursor quá lớn
-                            scale_factor = min(48 / cursor_width, 48 / cursor_height)
-                            new_width = int(cursor_width * scale_factor)
-                            new_height = int(cursor_height * scale_factor)
-                            cursor_img = cursor_img.resize(
-                                (new_width, new_height), Image.Resampling.LANCZOS
-                            )
-
-                        # Paste cursor lên hình ảnh với alpha blending
-                        img_pil.paste(cursor_img, (paste_x, paste_y), cursor_img)
-
-                        # Convert lại sang RGB
-                        img_pil = img_pil.convert("RGB")
-                    else:
-                        # Fallback: vẽ hình tròn đỏ nếu không load được cursor
-                        draw = ImageDraw.Draw(img_pil)
-                        radius = 8
-                        ellipse_bbox = (
-                            relative_x - radius,
-                            relative_y - radius,
-                            relative_x + radius,
-                            relative_y + radius,
-                        )
-                        draw.ellipse(ellipse_bbox, fill=(255, 0, 0), outline=(0, 0, 0))
-
-            except Exception as e:
-                pass
-
         return img_pil
+
     except mss.ScreenShotError as e:
         print(f"MSS ScreenShotError: {e}")
         return None
     except Exception as e:
         print(f"Capture frame error: {e}")
+        return None
+
+
+def get_cursor_info_for_monitor(
+    monitor: dict, mouse_controller: Controller
+) -> dict | None:
+    """
+    Lấy thông tin cursor hiện tại cho một monitor cụ thể (chỉ trên Windows).
+    """
+    if sys.platform != "win32":
+        return None
+
+    try:
+        # Lấy vị trí chuột toàn cục
+        mouse_x, mouse_y = mouse_controller.position
+
+        # Tính toán vị trí tương đối của chuột trên màn hình đang được chụp
+        monitor_x, monitor_y = monitor["left"], monitor["top"]
+        relative_x = mouse_x - monitor_x
+        relative_y = mouse_y - monitor_y
+
+        # Chỉ trả về nếu con trỏ nằm trong phạm vi của màn hình này
+        if not (
+            0 <= relative_x < monitor["width"] and 0 <= relative_y < monitor["height"]
+        ):
+            return None
+
+        # Lấy thông tin cursor hiện tại
+        cursor_info = get_cursor_info()
+        cursor_type = "normal"
+        visible = True
+
+        if cursor_info:
+            visible = bool(cursor_info.flags & CURSOR_SHOWING)
+            if visible:
+                cursor_type = get_cursor_type_from_handle(cursor_info.hCursor)
+
+        return {
+            "cursor_type": cursor_type,
+            "position": (relative_x, relative_y),
+            "visible": visible,
+        }
+
+    except Exception as e:
+        print(f"Error getting cursor info: {e}")
         return None
 
 

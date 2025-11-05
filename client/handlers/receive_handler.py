@@ -16,6 +16,7 @@ from common.packets import (
     VideoConfigPacket,
     VideoStreamPacket,
     AuthenticationPasswordPacket,
+    CursorInfoPacket,
     Packet,
 )
 
@@ -35,6 +36,7 @@ class ReceiveHandler:
             AuthenticationPasswordPacket: cls.__handle_authentication_password_packet,  # Host nhận
             VideoConfigPacket: cls.__handle_video_config_packet,
             VideoStreamPacket: cls.__handle_video_stream_packet,
+            CursorInfoPacket: cls.__handle_cursor_info_packet,
             KeyboardPacket: cls.__handle_keyboard_packet,
             MousePacket: cls.__handle_mouse_packet,
         }
@@ -144,6 +146,19 @@ class ReceiveHandler:
             return
 
         SessionManager.handle_video_data(packet.session_id, packet.video_data)
+
+    @staticmethod
+    def __handle_cursor_info_packet(packet: CursorInfoPacket):
+        """
+        Xử lý CursorInfoPacket - cập nhật thông tin cursor cho controller.
+        """
+        if not packet.session_id:
+            logger.error("Received CursorInfoPacket with empty session_id.")
+            return
+
+        SessionManager.handle_cursor_info(
+            packet.session_id, packet.cursor_type, packet.position, packet.visible
+        )
 
     # ----------------------------
     # Host

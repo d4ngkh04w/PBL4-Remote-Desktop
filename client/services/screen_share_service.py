@@ -7,9 +7,8 @@ from pynput.mouse import Controller
 import mss
 
 from common.h264 import H264Encoder
-from common.utils import capture_frame
+from common.utils import capture_frame, get_cursor_info_for_monitor
 from client.handlers.send_handler import SendHandler
-from client.services.performance_monitor import performance_monitor
 from common.config import Config
 
 logger = logging.getLogger(__name__)
@@ -78,8 +77,6 @@ class ScreenShareService:
                 img = capture_frame(
                     sct_instance=sct,
                     monitor=monitor,
-                    mouse_controller=self.__mouse_controller,
-                    draw_cursor=False,  # Không cần cursor cho dummy frame
                 )
                 if img:
                     self.__encoder.encode(img)
@@ -161,7 +158,6 @@ class ScreenShareService:
     def __stream_worker(self):
         """Thread worker: capture 1 lần → encode 1 lần → gửi cho tất cả sessions."""
         frame_delay = 1.0 / self.__fps
-        frame_count = 0
 
         with mss.mss(with_cursor=True) as sct:
             try:
@@ -172,7 +168,6 @@ class ScreenShareService:
                     with self.__sessions_lock:
                         if not self.__active_sessions:
                             break
-                        active_sessions_count = len(self.__active_sessions)
 
                     # Encoder sẽ được khởi tạo trong add_session(), nhưng double-check
                     if not self.__encoder or not self.__screen_config:
@@ -192,39 +187,35 @@ class ScreenShareService:
                     img = capture_frame(
                         sct_instance=sct,
                         monitor=self.__screen_config["monitor"],
-                        mouse_controller=self.__mouse_controller,
-                        draw_cursor=True,
                     )
 
                     if not img:
                         time.sleep(frame_delay)
                         continue
 
-                    # ENCODE 1 LẦN
+                    # LẤY THÔNG TIN CURSOR
+                    cursor_info = get_cursor_info_for_monitor(
+                        self.__screen_config["monitor"], self.__mouse_controller
+                    )
+
                     video_data = self.__encoder.encode(img)
 
-                    # GỬI 1 VIDEO PACKET LÊN SERVER (không có session_id cụ thể)
+                    # Gửi video packet và cursor info
                     if video_data:
                         try:
                             SendHandler.send_video_stream_packet(
                                 video_data=video_data,
                             )
-                            frame_count += 1
 
-                            # Record performance metrics
-                            video_data_size = len(video_data)
-                            performance_monitor.record_frame_sent(
-                                frame_size_bytes=video_data_size,
-                                sessions_count=active_sessions_count,
-                            )
+                            if cursor_info:
+                                SendHandler.send_cursor_info_packet(
+                                    cursor_type=cursor_info["cursor_type"],
+                                    position=cursor_info["position"],
+                                    visible=cursor_info["visible"],
+                                )
+
                         except Exception as e:
                             logger.error(f"Error sending broadcast video packet: {e}")
-
-                    if frame_count % 300 == 0:  # Log mỗi 300 frames (10s @ 30fps)
-                        stats = performance_monitor.get_current_stats()
-                        logger.info(
-                            f"Centralized streaming: {frame_count} frames → {stats['sessions_count']} sessions"
-                        )
 
                     # Frame rate control
                     loop_time = time.perf_counter() - loop_start
@@ -236,7 +227,7 @@ class ScreenShareService:
                 logger.error(f"Centralized stream error: {e}", exc_info=True)
 
 
-# Global instance
+bitrate = int(2_000_000 * (Config.fps / 25.0) * 1.2)
 screen_share_service = ScreenShareService(
-    fps=Config.fps, gop_size=60, bitrate=2_000_000
+    fps=Config.fps, gop_size=Config.fps, bitrate=bitrate
 )

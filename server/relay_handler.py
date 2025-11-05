@@ -18,6 +18,7 @@ from common.packets import (
     SessionPacket,
     VideoStreamPacket,
     VideoConfigPacket,
+    CursorInfoPacket,
 )
 from common.enums import Status
 from server.client_manager import ClientManager
@@ -49,7 +50,13 @@ class RelayHandler:
                 return
             if isinstance(
                 packet,
-                (VideoStreamPacket, VideoConfigPacket, MousePacket, KeyboardPacket),
+                (
+                    VideoStreamPacket,
+                    VideoConfigPacket,
+                    CursorInfoPacket,
+                    MousePacket,
+                    KeyboardPacket,
+                ),
             ):
                 RelayHandler.__stream_pool.submit(
                     RelayHandler.__process_packet, packet, sender_socket
@@ -88,6 +95,7 @@ class RelayHandler:
                 SessionPacket: cls.__handle_session_packet,
                 VideoStreamPacket: cls.__relay_stream_packet,
                 VideoConfigPacket: cls.__relay_stream_packet,
+                CursorInfoPacket: cls.__relay_stream_packet,
                 MousePacket: cls.__relay_stream_packet,
                 KeyboardPacket: cls.__relay_stream_packet,
             }

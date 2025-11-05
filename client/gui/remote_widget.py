@@ -6,8 +6,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QSizePolicy,
 )
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import QPixmap, QPainter, QPen
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QPoint
 
 from client.controllers.remote_widget_controller import RemoteWidgetController
 
@@ -34,6 +34,12 @@ class RemoteWidget(QWidget):
         self.__last_mouse_pos = (
             None  # Lưu vị trí chuột cuối cùng để tránh gửi duplicate
         )
+
+        # Thông tin cursor từ server
+        self.__cursor_type = "normal"
+        self.__cursor_position = None  # (x, y) tương đối trên pixmap gốc
+        self.__cursor_visible = True
+        self.__cursor_pixmaps = {}  # Cache cursor images
 
         # Cho phép widget nhận focus để lắng nghe sự kiện bàn phím và chuột
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -75,6 +81,15 @@ class RemoteWidget(QWidget):
         # Scale và hiển thị
         self.__scale_and_display()
 
+    @pyqtSlot(str, tuple, bool)
+    def update_cursor_overlay(self, cursor_type: str, position: tuple, visible: bool):
+        """Cập nhật thông tin cursor và vẽ lại overlay."""
+        self.__cursor_type = cursor_type
+        self.__cursor_position = position
+        self.__cursor_visible = visible
+        # Vẽ lại frame với cursor mới
+        self.__scale_and_display()
+
     @pyqtSlot(str)
     def show_error(self, message: str):
         """Hiển thị thông báo lỗi."""
@@ -82,17 +97,92 @@ class RemoteWidget(QWidget):
         self.image_label.setText(f"❌ Error: {message}")
 
     def __scale_and_display(self):
-        """Scale pixmap gốc và hiển thị vừa với widget."""
+        """Scale pixmap gốc và hiển thị vừa với widget, vẽ cursor overlay."""
         if not self.__current_pixmap:
             return
 
+        # Tạo bản sao của pixmap gốc để vẽ cursor lên
+        pixmap_with_cursor = self.__current_pixmap.copy()
+
+        # Vẽ cursor nếu có thông tin
+        if self.__cursor_visible and self.__cursor_position:
+            self.__draw_cursor_on_pixmap(pixmap_with_cursor)
+
         # Scale pixmap để vừa với label nhưng giữ aspect ratio
-        scaled_pixmap = self.__current_pixmap.scaled(
+        scaled_pixmap = pixmap_with_cursor.scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         self.image_label.setPixmap(scaled_pixmap)
+
+    def __draw_cursor_on_pixmap(self, pixmap: QPixmap):
+        """Vẽ cursor lên pixmap."""
+        if not self.__cursor_position:
+            return
+
+        cursor_x, cursor_y = self.__cursor_position
+
+        # Load cursor image
+        cursor_pixmap = self.__load_cursor_pixmap(self.__cursor_type)
+
+        if cursor_pixmap:
+            # Vẽ cursor image lên pixmap
+            painter = QPainter(pixmap)
+            painter.drawPixmap(cursor_x, cursor_y, cursor_pixmap)
+            painter.end()
+        else:
+            # Fallback: vẽ hình tròn đỏ nếu không load được cursor
+            painter = QPainter(pixmap)
+            pen = QPen(Qt.GlobalColor.red, 2)
+            painter.setPen(pen)
+            painter.setBrush(Qt.GlobalColor.red)
+            radius = 8
+            painter.drawEllipse(QPoint(cursor_x, cursor_y), radius, radius)
+            painter.end()
+
+    def __load_cursor_pixmap(self, cursor_type: str) -> QPixmap | None:
+        """Load cursor pixmap từ file."""
+        # Kiểm tra cache
+        if cursor_type in self.__cursor_pixmaps:
+            return self.__cursor_pixmaps[cursor_type]
+
+        try:
+            from common.utils import get_cursor_image_path, load_cursor_image
+
+            cursor_path = get_cursor_image_path(cursor_type)
+            if not cursor_path:
+                return None
+
+            cursor_img = load_cursor_image(cursor_path)
+            if not cursor_img:
+                return None
+
+            # Convert PIL Image to QPixmap
+            import io
+
+            buffer = io.BytesIO()
+            cursor_img.save(buffer, format="PNG")
+            buffer.seek(0)
+            cursor_pixmap = QPixmap()
+            cursor_pixmap.loadFromData(buffer.read())
+
+            # Resize cursor nếu quá lớn
+            if cursor_pixmap.width() > 48 or cursor_pixmap.height() > 48:
+                cursor_pixmap = cursor_pixmap.scaled(
+                    48,
+                    48,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+            # Cache lại
+            self.__cursor_pixmaps[cursor_type] = cursor_pixmap
+            return cursor_pixmap
+
+        except Exception as e:
+            logger.debug(f"Error loading cursor pixmap for {cursor_type}: {e}")
+            return None
 
     @pyqtSlot()
     def toggle_fullscreen_ui(self):

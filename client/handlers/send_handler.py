@@ -7,6 +7,7 @@ from common.packets import (
     SessionPacket,
     VideoConfigPacket,
     VideoStreamPacket,
+    CursorInfoPacket,
 )
 from common.enums import Status, KeyBoardEventType, KeyBoardType
 from client.managers.client_manager import ClientManager
@@ -74,6 +75,19 @@ class SendHandler:
             video_data=video_data,
         )
         SenderService.send_packet(video_stream_packet)
+
+    @classmethod
+    def send_cursor_info_packet(
+        cls, cursor_type: str, position: tuple[int, int], visible: bool = True
+    ):
+        """Gửi CursorInfoPacket broadcast - server sẽ relay cho tất cả controller sessions"""
+        cursor_info_packet = CursorInfoPacket(
+            session_id=None,
+            cursor_type=cursor_type,
+            position=position,
+            visible=visible,
+        )
+        SenderService.send_packet(cursor_info_packet)
 
     @classmethod
     def send_keyboard_packet(

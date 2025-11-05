@@ -17,6 +17,9 @@ class RemoteWidgetController(QObject):
     error_occurred = pyqtSignal(str)
     disconnected = pyqtSignal()
     toggle_fullscreen = pyqtSignal()
+    cursor_info_received = pyqtSignal(
+        str, tuple, bool
+    )  # cursor_type, position, visible
 
     def __init__(self, remote_widget, session_id: str):
         super().__init__()
@@ -50,6 +53,7 @@ class RemoteWidgetController(QObject):
         self.frame_decoded.connect(self.remote_widget.update_frame)
         self.error_occurred.connect(self.remote_widget.show_error)
         self.toggle_fullscreen.connect(self.remote_widget.toggle_fullscreen_ui)
+        self.cursor_info_received.connect(self.remote_widget.update_cursor_overlay)
 
         # View -> Controller
         self.remote_widget.disconnect_requested.connect(self.handle_disconnect_request)
@@ -87,6 +91,15 @@ class RemoteWidgetController(QObject):
         """Xử lý lỗi decode từ ReceiveHandler."""
         logger.error(f"Decode error for session {self.session_id}: {error_message}")
         self.error_occurred.emit(error_message)
+
+    def handle_cursor_info(
+        self, cursor_type: str, position: tuple[int, int], visible: bool
+    ):
+        """Xử lý thông tin cursor nhận được từ server."""
+        try:
+            self.cursor_info_received.emit(cursor_type, position, visible)
+        except Exception as e:
+            logger.error(f"Error handling cursor info: {e}", exc_info=True)
 
     @pyqtSlot(str)
     def handle_disconnect_request(self, session_id: str):
