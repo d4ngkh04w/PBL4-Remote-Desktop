@@ -16,7 +16,7 @@ from PyQt5.QtGui import QIcon
 class PasswordDialog(QDialog):
     """Custom dialog để nhập và xác nhận mật khẩu"""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, is_dark_mode=True):
         super().__init__(parent)
 
         # Remove window frame
@@ -28,67 +28,212 @@ class PasswordDialog(QDialog):
 
         # Variables for window dragging
         self.__drag_pos = QPoint()
+        self.__is_dark_mode = is_dark_mode
 
-        # Apply dark theme
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: #1a1a1a;
-                color: #e8e8e8;
-            }
-            QLabel {
-                color: #e8e8e8;
-            }
-            QLineEdit {
-                background-color: #2a2a2a;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 12px 16px;
-                color: #e8e8e8;
-                font-size: 14px;
-                selection-background-color: #ffd700;
-                letter-spacing: 2px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #ffd700;
-                background-color: #2d2d2d;
-            }
-            QLineEdit:hover {
-                border: 1px solid #4a4a4a;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 12px 24px;
-                color: #e8e8e8;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #505050;
-            }
-            QPushButton:pressed {
-                background-color: #242424;
-            }
-            QPushButton:disabled {
-                background-color: #1e1e1e;
-                color: #6a6a6a;
-                border: 1px solid #2d2d2d;
-            }
-            QFrame[frameShape="4"] {
-                background-color: #3e3e42;
-                max-height: 1px;
-                border: none;
-            }
-        """
-        )
+        # UI references for theme updates
+        self.title_bar = None
+        self.title_text = None
+        self.close_btn = None
+
+        # Apply theme
+        self.__apply_theme()
 
         # Biến lưu mật khẩu
         self.password = ""
 
         self.__setup_ui()
+
+    def __apply_theme(self):
+        """Apply theme based on dark mode setting."""
+        if self.__is_dark_mode:
+            self.setStyleSheet(
+                """
+                QDialog {
+                    background-color: #1a1a1a;
+                    color: #e8e8e8;
+                }
+                QLabel {
+                    color: #e8e8e8;
+                }
+                QLineEdit {
+                    background-color: #2a2a2a;
+                    border: 1px solid #404040;
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    color: #e8e8e8;
+                    font-size: 14px;
+                    selection-background-color: #ffd700;
+                    letter-spacing: 2px;
+                }
+                QLineEdit:focus {
+                    border: 2px solid #ffd700;
+                    background-color: #2d2d2d;
+                }
+                QLineEdit:hover {
+                    border: 1px solid #4a4a4a;
+                }
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border: 1px solid #404040;
+                    border-radius: 6px;
+                    padding: 12px 24px;
+                    color: #e8e8e8;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #3a3a3a;
+                    border: 1px solid #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #242424;
+                }
+                QPushButton:disabled {
+                    background-color: #1e1e1e;
+                    color: #6a6a6a;
+                    border: 1px solid #2d2d2d;
+                }
+                QPushButton#okButton:enabled {
+                    background-color: #ffd700;
+                    border: none;
+                    color: #1a1a1a;
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                QPushButton#okButton:enabled:hover {
+                    background-color: #ffed4e;
+                }
+                QPushButton#okButton:enabled:pressed {
+                    background-color: #e6c200;
+                }
+                QPushButton#okButton:disabled {
+                    background-color: #1e1e1e;
+                    color: #6a6a6a;
+                    border: 1px solid #2d2d2d;
+                }
+                QFrame[frameShape="4"] {
+                    background-color: #3e3e42;
+                    max-height: 1px;
+                    border: none;
+                }
+            """
+            )
+        else:
+            self.setStyleSheet(
+                """
+                QDialog {
+                    background-color: #fafafa;
+                    color: #000000;
+                }
+                QLabel {
+                    color: #000000;
+                }
+                QLineEdit {
+                    background-color: #ffffff;
+                    border: 2px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    color: #000000;
+                    font-size: 14px;
+                    selection-background-color: #ff8c00;
+                    letter-spacing: 2px;
+                }
+                QLineEdit:focus {
+                    border: 2px solid #ff8c00;
+                    background-color: #ffffff;
+                }
+                QLineEdit:hover {
+                    border: 2px solid #ffb347;
+                }
+                QPushButton {
+                    background-color: #ffffff;
+                    border: 2px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px 24px;
+                    color: #000000;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #fff5e6;
+                    border: 2px solid #ff8c00;
+                }
+                QPushButton:pressed {
+                    background-color: #ffe5cc;
+                }
+                QPushButton:disabled {
+                    background-color: #f5f5f5;
+                    color: #999999;
+                    border: 2px solid #e0e0e0;
+                }
+                QPushButton#okButton:enabled {
+                    background-color: #ff8c00;
+                    border: none;
+                    color: #ffffff;
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                QPushButton#okButton:enabled:hover {
+                    background-color: #ff9d1a;
+                }
+                QPushButton#okButton:enabled:pressed {
+                    background-color: #ff6b00;
+                }
+                QPushButton#okButton:disabled {
+                    background-color: #f5f5f5;
+                    color: #999999;
+                    border: 2px solid #e0e0e0;
+                }
+                QFrame[frameShape="4"] {
+                    background-color: #e0e0e0;
+                    max-height: 1px;
+                    border: none;
+                }
+            """
+            )
+
+    def __update_title_bar_style(self):
+        """Update title bar style based on current theme."""
+        if self.title_bar:
+            if self.__is_dark_mode:
+                self.title_bar.setStyleSheet(
+                    """
+                    QFrame {
+                        background-color: #1a1a1a;
+                        border-bottom: 1px solid #2a2a2a;
+                    }
+                """
+                )
+            else:
+                self.title_bar.setStyleSheet(
+                    """
+                    QFrame {
+                        background-color: #fafafa;
+                        border-bottom: 1px solid #e0e0e0;
+                    }
+                """
+                )
+
+        if self.title_text:
+            if self.__is_dark_mode:
+                self.title_text.setStyleSheet(
+                    "color: #e8e8e8; font-size: 13px; font-weight: 500;"
+                )
+            else:
+                self.title_text.setStyleSheet(
+                    "color: #000000; font-size: 13px; font-weight: 500;"
+                )
+
+        if self.close_btn:
+            assets_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "assets",
+                "images",
+            )
+            icon_suffix = "night" if self.__is_dark_mode else "light"
+            self.close_btn.setIcon(
+                QIcon(os.path.join(assets_path, f"close-{icon_suffix}.svg"))
+            )
 
     def __setup_ui(self):
         """Thiết lập giao diện"""
@@ -108,14 +253,24 @@ class PasswordDialog(QDialog):
 
         # Title
         title_label = QLabel("Set Custom Password")
-        title_label.setStyleSheet(
+        if self.__is_dark_mode:
+            title_label.setStyleSheet(
+                """
+                font-size: 20px;
+                font-weight: 600;
+                color: #ffffff;
+                margin-bottom: 5px;
             """
-            font-size: 20px;
-            font-weight: 600;
-            color: #ffffff;
-            margin-bottom: 5px;
-        """
-        )
+            )
+        else:
+            title_label.setStyleSheet(
+                """
+                font-size: 20px;
+                font-weight: 600;
+                color: #000000;
+                margin-bottom: 5px;
+            """
+            )
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
 
@@ -124,13 +279,22 @@ class PasswordDialog(QDialog):
             "Enter a custom password for remote connections.\nMinimum 6 characters required."
         )
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc_label.setStyleSheet(
+        if self.__is_dark_mode:
+            desc_label.setStyleSheet(
+                """
+                color: #9d9d9d;
+                font-size: 13px;
+                margin-bottom: 5px;
             """
-            color: #9d9d9d;
-            font-size: 13px;
-            margin-bottom: 5px;
-        """
-        )
+            )
+        else:
+            desc_label.setStyleSheet(
+                """
+                color: #666666;
+                font-size: 13px;
+                margin-bottom: 5px;
+            """
+            )
         layout.addWidget(desc_label)
 
         # Separator
@@ -202,32 +366,11 @@ class PasswordDialog(QDialog):
         button_layout.addWidget(self.cancel_button)
 
         self.ok_button = QPushButton("Set Password")
+        self.ok_button.setObjectName("okButton")
         self.ok_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ok_button.setMinimumHeight(45)
         self.ok_button.setEnabled(False)
         self.ok_button.clicked.connect(self.__on_ok_clicked)
-        self.ok_button.setStyleSheet(
-            """
-            QPushButton:enabled {
-                background-color: #ffd700;
-                border: none;
-                color: #1a1a1a;
-                font-weight: 600;
-                font-size: 14px;
-            }
-            QPushButton:enabled:hover {
-                background-color: #ffed4e;
-            }
-            QPushButton:enabled:pressed {
-                background-color: #e6c200;
-            }
-            QPushButton:disabled {
-                background-color: #1e1e1e;
-                color: #6a6a6a;
-                border: 1px solid #2d2d2d;
-            }
-        """
-        )
         button_layout.addWidget(self.ok_button)
 
         layout.addLayout(button_layout)
@@ -240,18 +383,10 @@ class PasswordDialog(QDialog):
 
     def __create_title_bar(self):
         """Tạo custom title bar cho dialog"""
-        title_bar = QFrame()
-        title_bar.setStyleSheet(
-            """
-            QFrame {
-                background-color: #1a1a1a;
-                border-bottom: 1px solid #2d2d2d;
-            }
-        """
-        )
-        title_bar.setFixedHeight(40)
+        self.title_bar = QFrame()
+        self.title_bar.setFixedHeight(40)
 
-        title_layout = QHBoxLayout(title_bar)
+        title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(12, 0, 0, 0)
         title_layout.setSpacing(8)
 
@@ -270,32 +405,16 @@ class PasswordDialog(QDialog):
         title_layout.addWidget(icon_label)
 
         # Title text
-        title_text = QLabel("Set Custom Password")
-        title_text.setStyleSheet(
-            """
-            color: #e8e8e8;
-            font-size: 13px;
-            font-weight: 500;
-        """
-        )
-        title_layout.addWidget(title_text)
+        self.title_text = QLabel("Set Custom Password")
+        self.title_text.setStyleSheet("font-size: 13px; font-weight: 500;")
+        title_layout.addWidget(self.title_text)
 
         title_layout.addStretch()
 
         # Close button
-        close_btn = QPushButton()
-        close_btn.setIcon(
-            QIcon(
-                os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "assets",
-                    "images",
-                    "close.svg",
-                )
-            )
-        )
-        close_btn.setIconSize(QSize(24, 24))
-        close_btn.setStyleSheet(
+        self.close_btn = QPushButton()
+        self.close_btn.setIconSize(QSize(24, 24))
+        self.close_btn.setStyleSheet(
             """
             QPushButton {
                 background-color: transparent;
@@ -314,14 +433,17 @@ class PasswordDialog(QDialog):
             }
         """
         )
-        close_btn.clicked.connect(self.reject)
-        title_layout.addWidget(close_btn)
+        self.close_btn.clicked.connect(self.reject)
+        title_layout.addWidget(self.close_btn)
 
         # Make title bar draggable
-        title_bar.mousePressEvent = self.__title_bar_mouse_press
-        title_bar.mouseMoveEvent = self.__title_bar_mouse_move
+        self.title_bar.mousePressEvent = self.__title_bar_mouse_press
+        self.title_bar.mouseMoveEvent = self.__title_bar_mouse_move
 
-        return title_bar
+        # Update title bar style based on theme
+        self.__update_title_bar_style()
+
+        return self.title_bar
 
     def __title_bar_mouse_press(self, event):
         """Handle mouse press on title bar for dragging"""

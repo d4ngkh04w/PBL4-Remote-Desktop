@@ -32,7 +32,12 @@ class MainWindowController(QObject):
     def __init__(self):
         super().__init__()
         self.__running = False
+        self.view = None  # Reference to view for accessing theme state
         logger.debug("MainWindowController initialized.")
+
+    def set_view(self, view):
+        """Set reference to the view."""
+        self.view = view
 
     def start(self):
         if self.__running:
@@ -114,8 +119,13 @@ class MainWindowController(QObject):
         """Yêu cầu View hiển thị dialog để đặt mật khẩu tự đặt."""
         from client.gui.password_dialog import PasswordDialog
 
-        # Tạo dialog
-        dialog = PasswordDialog()
+        # Get current theme from view
+        is_dark_mode = (
+            self.view.is_dark_mode() if hasattr(self.view, "is_dark_mode") else True
+        )
+
+        # Tạo dialog with theme
+        dialog = PasswordDialog(is_dark_mode=is_dark_mode)
 
         # Hiển thị dialog và chờ kết quả
         if dialog.exec_() == PasswordDialog.Accepted:
@@ -159,38 +169,75 @@ class MainWindowController(QObject):
         )
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
 
-        # Apply dark theme styling
-        msg_box.setStyleSheet(
+        # Apply theme styling based on current theme
+        is_dark = self.view.is_dark_mode() if self.view else True
+
+        if is_dark:
+            # Dark theme
+            msg_box.setStyleSheet(
+                """
+                QMessageBox {
+                    background-color: #1a1a1a;
+                    color: #e8e8e8;
+                    border: 2px solid #2d2d2d;
+                    border-radius: 10px;
+                }
+                QMessageBox QLabel {
+                    color: #e8e8e8;
+                    font-size: 13px;
+                }
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border: 1px solid #404040;
+                    border-radius: 6px;
+                    padding: 8px 24px;
+                    color: #e8e8e8;
+                    font-size: 13px;
+                    font-weight: 500;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #3a3a3a;
+                    border: 1px solid #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #242424;
+                }
             """
-            QMessageBox {
-                background-color: #1a1a1a;
-                color: #e8e8e8;
-                border: 2px solid #2d2d2d;
-                border-radius: 10px;
-            }
-            QMessageBox QLabel {
-                color: #e8e8e8;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 8px 24px;
-                color: #e8e8e8;
-                font-size: 13px;
-                font-weight: 500;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #505050;
-            }
-            QPushButton:pressed {
-                background-color: #242424;
-            }
-        """
-        )
+            )
+        else:
+            # Light theme
+            msg_box.setStyleSheet(
+                """
+                QMessageBox {
+                    background-color: #ffffff;
+                    color: #1a1a1a;
+                    border: 2px solid #e0e0e0;
+                    border-radius: 10px;
+                }
+                QMessageBox QLabel {
+                    color: #1a1a1a;
+                    font-size: 13px;
+                }
+                QPushButton {
+                    background-color: #f5f5f5;
+                    border: 1px solid #d0d0d0;
+                    border-radius: 6px;
+                    padding: 8px 24px;
+                    color: #1a1a1a;
+                    font-size: 13px;
+                    font-weight: 500;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #e8e8e8;
+                    border: 1px solid #c0c0c0;
+                }
+                QPushButton:pressed {
+                    background-color: #d8d8d8;
+                }
+            """
+            )
 
         reply = msg_box.exec()
 

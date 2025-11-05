@@ -64,7 +64,6 @@ class PacketType(Enum):
 
     VIDEO_STREAM = "media/video-stream"
     VIDEO_CONFIG = "media/video-config"
-    CURSOR_INFO = "media/cursor-info"
 
     @classmethod
     def get(cls, value) -> "PacketType":

@@ -18,7 +18,6 @@ from common.packets import (
     SessionPacket,
     VideoStreamPacket,
     VideoConfigPacket,
-    CursorInfoPacket,
 )
 from common.enums import Status
 from server.client_manager import ClientManager
@@ -53,7 +52,6 @@ class RelayHandler:
                 (
                     VideoStreamPacket,
                     VideoConfigPacket,
-                    CursorInfoPacket,
                     MousePacket,
                     KeyboardPacket,
                 ),
@@ -95,7 +93,7 @@ class RelayHandler:
                 SessionPacket: cls.__handle_session_packet,
                 VideoStreamPacket: cls.__relay_stream_packet,
                 VideoConfigPacket: cls.__relay_stream_packet,
-                CursorInfoPacket: cls.__relay_stream_packet,
+                # CursorInfoPacket removed - cursor info now embedded in VideoStreamPacket
                 MousePacket: cls.__relay_stream_packet,
                 KeyboardPacket: cls.__relay_stream_packet,
             }

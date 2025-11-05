@@ -78,19 +78,23 @@ class SessionPacket:
 
 class VideoStreamPacket:
     """
-    Gói tin chứa luồng video
+    Gói tin chứa luồng video và thông tin cursor
     """
 
     def __init__(
         self,
         session_id: str | None,
         video_data: bytes,
+        cursor_type: str | None = None,
+        cursor_position: tuple[int, int] | None = None,
     ):
         self.video_data = video_data
         self.session_id = session_id
+        self.cursor_type = cursor_type  # "normal", "text", "hand", "wait", etc.
+        self.cursor_position = cursor_position  # Vị trí tương đối trên monitor
 
     def __repr__(self):
-        return f"VideoStreamPacket(size={len(self.video_data)}, session_id={self.session_id})"
+        return f"VideoStreamPacket(size={len(self.video_data)}, session_id={self.session_id}, cursor={self.cursor_type}@{self.cursor_position})"
 
 
 class VideoConfigPacket:
@@ -159,27 +163,6 @@ class MousePacket:
         return f"MousePacket(event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
-class CursorInfoPacket:
-    """
-    Gói tin thông tin cursor
-    """
-
-    def __init__(
-        self,
-        session_id: str | None,
-        cursor_type: str,
-        position: tuple[int, int],
-        visible: bool = True,
-    ):
-        self.session_id = session_id
-        self.cursor_type = cursor_type  # "normal", "text", "hand", "wait", etc.
-        self.position = position  # Vị trí tương đối trên monitor
-        self.visible = visible
-
-    def __repr__(self):
-        return f"CursorInfoPacket(cursor_type={self.cursor_type}, position={self.position}, visible={self.visible}, session_id={self.session_id})"
-
-
 Packet = (
     AssignIdPacket
     | ClientInformationPacket
@@ -191,5 +174,4 @@ Packet = (
     | SessionPacket
     | VideoStreamPacket
     | VideoConfigPacket
-    | CursorInfoPacket
 )

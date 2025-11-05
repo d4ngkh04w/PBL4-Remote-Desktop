@@ -79,8 +79,14 @@ class SessionManager:
             )
 
     @classmethod
-    def handle_video_data(cls, session_id: str, video_data: bytes):
-        """Xử lý dữ liệu video nhận được cho session."""
+    def handle_video_data(
+        cls,
+        session_id: str,
+        video_data: bytes,
+        cursor_type: str | None = None,
+        cursor_position: tuple[int, int] | None = None,
+    ):
+        """Xử lý dữ liệu video nhận được cho session. Có thể kèm cursor info."""
         session = cls._sessions.get(session_id)
         if not session:
             logger.warning(f"Received video data for unknown session: {session_id}")
@@ -91,7 +97,6 @@ class SessionManager:
             logger.warning(f"No decoder found for session: {session_id}")
             return
 
-        session = cls._sessions.get(session_id)
         if not session or not session.decoder or not session.widget:
             logger.warning(f"Incomplete session resources for session: {session_id}")
             return
@@ -112,7 +117,21 @@ class SessionManager:
             )
             pixmap = QPixmap.fromImage(qimage)
 
+            # Gửi frame cho widget
             session.widget.controller.handle_decoded_frame(pixmap)
+
+            # Nếu có thông tin con trỏ, gửi luôn để overlay vẽ lên frame
+            if cursor_type and cursor_position is not None:
+                try:
+                    # visible default là True (chúng ta không gửi visible riêng)
+                    session.widget.controller.handle_cursor_info(
+                        cursor_type, cursor_position, True
+                    )
+                except Exception:
+                    logger.debug(
+                        f"Failed to deliver cursor info for session {session_id}",
+                        exc_info=True,
+                    )
 
         except Exception as e:
             logger.error(

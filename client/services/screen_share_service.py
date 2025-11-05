@@ -193,26 +193,27 @@ class ScreenShareService:
                         time.sleep(frame_delay)
                         continue
 
-                    # LẤY THÔNG TIN CURSOR
+                        # LẤY THÔNG TIN CURSOR
                     cursor_info = get_cursor_info_for_monitor(
                         self.__screen_config["monitor"], self.__mouse_controller
                     )
 
                     video_data = self.__encoder.encode(img)
 
-                    # Gửi video packet và cursor info
+                    # Gửi video packet với cursor info
                     if video_data:
                         try:
                             SendHandler.send_video_stream_packet(
                                 video_data=video_data,
+                                cursor_type=(
+                                    cursor_info.get("cursor_type")
+                                    if cursor_info
+                                    else None
+                                ),
+                                cursor_position=(
+                                    cursor_info.get("position") if cursor_info else None
+                                ),
                             )
-
-                            if cursor_info:
-                                SendHandler.send_cursor_info_packet(
-                                    cursor_type=cursor_info["cursor_type"],
-                                    position=cursor_info["position"],
-                                    visible=cursor_info["visible"],
-                                )
 
                         except Exception as e:
                             logger.error(f"Error sending broadcast video packet: {e}")
