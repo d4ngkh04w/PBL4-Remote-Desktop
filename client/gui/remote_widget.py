@@ -30,6 +30,9 @@ class RemoteWidget(QWidget):
         self.session_id = session_id
         self.controller = RemoteWidgetController(self, self.session_id)
         self.__cleanup_done = False
+        self._closed_by_manager = (
+            False  # Flag để biết widget được đóng từ SessionManager
+        )
         self.__current_pixmap = None  # Lưu pixmap gốc để re-scale khi resize
         self.__last_mouse_pos = (
             None  # Lưu vị trí chuột cuối cùng để tránh gửi duplicate
@@ -351,8 +354,13 @@ class RemoteWidget(QWidget):
     def closeEvent(self, event):
         """Xử lý sự kiện đóng cửa sổ."""
         if not self.__cleanup_done:
-            # Chỉ gửi disconnect request nếu chưa được cleanup từ bên ngoài
-            self.disconnect_requested.emit(self.session_id)
+            self.__cleanup_done = True
+
+            # Chỉ gửi disconnect request nếu user chủ động đóng widget
+            # Không gửi nếu widget được đóng từ SessionManager (do nhận SESSION_ENDED)
+            if not self._closed_by_manager:
+                self.disconnect_requested.emit(self.session_id)
+
             self.cleanup()
         event.accept()
 

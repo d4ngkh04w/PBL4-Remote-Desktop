@@ -254,6 +254,9 @@ class RemoteWidgetController(QObject):
             # Stop mouse timer
             if self.__mouse_timer.isActive():
                 self.__mouse_timer.stop()
+            
+            # Dừng keyboard listener nếu còn chạy
+            KeyboardListenerService.stop_listening(self.session_id)
 
             self.stop()
             logger.info(f"RemoteWidgetController cleanup completed: {self.session_id}")

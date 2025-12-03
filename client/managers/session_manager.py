@@ -188,12 +188,19 @@ class SessionManager:
                 if session.decoder and hasattr(session.decoder, "close"):
                     session.decoder.close()
 
-                # Đóng widget sau - widget sẽ tự cleanup controller
+                # Đóng widget sau - phải đóng trong Qt main thread
                 if session.widget and hasattr(session.widget, "close"):
-                    # Đặt flag để tránh gửi end packet khi đóng widget
-                    if hasattr(session.widget, "_cleanup_done"):
-                        session.widget._cleanup_done = True
-                    session.widget.close()
+                    # Đặt flag để widget biết đang được đóng từ SessionManager
+                    # Tránh emit disconnect_requested signal
+                    session.widget._closed_by_manager = True
+                    
+                    # Đóng widget trong main thread để tránh Qt threading issues
+                    from PyQt5.QtCore import QMetaObject, Qt
+                    QMetaObject.invokeMethod(
+                        session.widget, 
+                        "close", 
+                        Qt.ConnectionType.QueuedConnection
+                    )
 
             elif session.role == "host":
                 from client.services.screen_share_service import screen_share_service

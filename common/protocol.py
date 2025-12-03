@@ -22,7 +22,7 @@ class Protocol:
     """
 
     __MAX_PACKET_SIZE = 50 * 1024 * 1024
-    __COMPRESS_PACKET_TYPES = {PacketType.VIDEO_STREAM}
+    __NO_COMPRESSION_PACKET_TYPES = {PacketType.VIDEO_STREAM}
     __HEADER_DELIMITER = b"\r\n\r\n"  # Delimiter giữa headers và body
 
     @staticmethod
@@ -101,7 +101,7 @@ class Protocol:
             packet_type = PacketType.get(packet)
 
             is_compressed = False
-            if packet_type in cls.__COMPRESS_PACKET_TYPES:
+            if packet_type not in cls.__NO_COMPRESSION_PACKET_TYPES:
                 compressed = lz4.compress(payload)
                 is_compressed = True
             else:
