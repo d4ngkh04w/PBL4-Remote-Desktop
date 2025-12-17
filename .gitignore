@@ -10,3 +10,4 @@ logs/
 *.spec
 dist/
 build/
+certs/

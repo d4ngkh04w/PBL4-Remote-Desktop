@@ -710,9 +710,38 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(str, str)
     def show_notification(self, message: str, notif_type: str):
-        """Hiển thị hộp thoại thông báo (Info, Warning, Error)."""
+        """Hiển thị notification ở góc dưới bên phải màn hình."""
         try:
-            # Create custom dialog
+            from client.gui.notification_widget import NotificationWidget
+
+            # Create and show notification widget
+            # Keep reference to prevent garbage collection
+            if not hasattr(self, "_notifications"):
+                self._notifications = []
+
+            notification = NotificationWidget(
+                message=message,
+                notification_type=notif_type,
+                timeout=5000,  # 5 seconds
+                parent=self,  # Set parent to keep reference
+            )
+            self._notifications.append(notification)
+
+            # Remove from list when closed
+            notification.destroyed.connect(
+                lambda: (
+                    self._notifications.remove(notification)
+                    if notification in self._notifications
+                    else None
+                )
+            )
+
+            notification.show()
+
+            logger.debug(f"Notification shown: {message[:50]}")
+            return
+
+            # Old dialog code below (kept as fallback)
             dialog = QDialog(self)
             dialog.setWindowFlags(
                 Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog

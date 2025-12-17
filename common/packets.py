@@ -33,13 +33,20 @@ class ConnectionRequestPacket:
     Yêu cầu kết nối từ controller -> host
     """
 
-    def __init__(self, sender_id: str, receiver_id: str, password: str):
+    def __init__(
+        self,
+        sender_id: str,
+        receiver_id: str,
+        password: str,
+        sender_hostname: str = "Unknown",
+    ):
         self.sender_id = sender_id
         self.receiver_id = receiver_id
         self.password = password
+        self.sender_hostname = sender_hostname
 
     def __repr__(self):
-        return f"ConnectionRequestPacket(sender_id={self.sender_id}, receiver_id={self.receiver_id})"
+        return f"ConnectionRequestPacket(sender_id={self.sender_id}, receiver_id={self.receiver_id}, hostname={self.sender_hostname})"
 
 
 class AuthenticationPasswordPacket:
@@ -67,10 +74,17 @@ class SessionPacket:
     Gói tin chứa thông tin phiên làm việc
     """
 
-    def __init__(self, status: Status, session_id: str, role: str | None = None):
+    def __init__(
+        self,
+        status: Status,
+        session_id: str,
+        role: str | None = None,
+        partner_hostname: str | None = None,
+    ):
         self.status = status
         self.session_id = session_id
         self.role = role
+        self.partner_hostname = partner_hostname  # Hostname of the other party
 
     def __repr__(self):
         return f"SessionPacket(status={self.status}), session_id={self.session_id})"
@@ -163,6 +177,110 @@ class MousePacket:
         return f"MousePacket(event_type={self.event_type}, button={self.button}, position={self.position}, scroll_delta={self.scroll_delta})"
 
 
+class ChatMessagePacket:
+    """
+    Gói tin chat message
+    """
+
+    def __init__(
+        self, session_id: str, sender_role: str, message: str, timestamp: float
+    ):
+        self.session_id = session_id
+        self.sender_role = sender_role  # "host" or "controller"
+        self.message = message
+        self.timestamp = timestamp
+
+    def __repr__(self):
+        return f"ChatMessagePacket(sender_role={self.sender_role}, message={self.message[:50]}...)"
+
+
+class FileMetadataPacket:
+    """
+    Gói tin chứa metadata của file (tên, kích thước, ...)
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        file_id: str,
+        filename: str,
+        filesize: int,
+        sender_role: str,
+    ):
+        self.session_id = session_id
+        self.file_id = file_id
+        self.filename = filename
+        self.filesize = filesize
+        self.sender_role = sender_role  # "host" or "controller"
+
+    def __repr__(self):
+        return f"FileMetadataPacket(file_id={self.file_id}, filename={self.filename}, size={self.filesize})"
+
+
+class FileAcceptPacket:
+    """
+    Gói tin chấp nhận nhận file
+    """
+
+    def __init__(self, session_id: str, file_id: str):
+        self.session_id = session_id
+        self.file_id = file_id
+
+    def __repr__(self):
+        return f"FileAcceptPacket(file_id={self.file_id})"
+
+
+class FileRejectPacket:
+    """
+    Gói tin từ chối nhận file
+    """
+
+    def __init__(self, session_id: str, file_id: str):
+        self.session_id = session_id
+        self.file_id = file_id
+
+    def __repr__(self):
+        return f"FileRejectPacket(file_id={self.file_id})"
+
+
+class FileChunkPacket:
+    """
+    Gói tin chứa chunk dữ liệu file
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        file_id: str,
+        chunk_index: int,
+        chunk_data: bytes,
+        total_chunks: int,
+    ):
+        self.session_id = session_id
+        self.file_id = file_id
+        self.chunk_index = chunk_index
+        self.chunk_data = chunk_data
+        self.total_chunks = total_chunks
+
+    def __repr__(self):
+        return f"FileChunkPacket(file_id={self.file_id}, chunk={self.chunk_index}/{self.total_chunks})"
+
+
+class FileCompletePacket:
+    """
+    Gói tin thông báo file đã gửi xong
+    """
+
+    def __init__(self, session_id: str, file_id: str, success: bool, message: str = ""):
+        self.session_id = session_id
+        self.file_id = file_id
+        self.success = success
+        self.message = message
+
+    def __repr__(self):
+        return f"FileCompletePacket(file_id={self.file_id}, success={self.success})"
+
+
 Packet = (
     AssignIdPacket
     | ClientInformationPacket
@@ -174,4 +292,10 @@ Packet = (
     | SessionPacket
     | VideoStreamPacket
     | VideoConfigPacket
+    | ChatMessagePacket
+    | FileMetadataPacket
+    | FileAcceptPacket
+    | FileRejectPacket
+    | FileChunkPacket
+    | FileCompletePacket
 )

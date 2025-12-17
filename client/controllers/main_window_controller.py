@@ -1,7 +1,7 @@
 import logging
 import os
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QIcon
 
 from client.managers.client_manager import ClientManager
@@ -28,6 +28,7 @@ class MainWindowController(QObject):
     widget_creation_requested = pyqtSignal(
         str
     )  # session_id - for creating widgets in main thread
+    sessions_updated = pyqtSignal()  # Signal to update active sessions list
 
     def __init__(self):
         super().__init__()
@@ -72,6 +73,14 @@ class MainWindowController(QObject):
 
     def on_ui_show_notification(self, message: str, type: str):
         self.notification_requested.emit(message, type)
+
+    def on_session_created(self):
+        """Called when a new session is created"""
+        self.sessions_updated.emit()
+
+    def on_session_ended(self):
+        """Called when a session ends"""
+        self.sessions_updated.emit()
 
     # --- Xử lý yêu cầu từ View ---
 
@@ -247,6 +256,159 @@ class MainWindowController(QObject):
                 "Custom password has been removed.", "info"
             )
             self.custom_password_changed.emit()  # Thông báo UI cập nhật
+
+    # --- Chat Window Creation (called from main thread) ---
+    @pyqtSlot(str, str)
+    def create_host_chat_window(self, session_id: str, partner_hostname: str):
+        """Create chat window for host session - must be called in main Qt thread"""
+        try:
+            from client.gui.chat_window import ChatWindow
+            from client.managers.session_manager import SessionManager
+            from client.services.file_transfer_service import FileTransferService
+            from client.handlers.send_handler import SendHandler
+
+            chat_window = ChatWindow(
+                partner_hostname=partner_hostname, role="host", session_id=session_id
+            )
+            SessionManager.set_chat_window(session_id, chat_window)
+
+            # Connect sessions_updated signal to update chat window's sessions list
+            self.sessions_updated.connect(chat_window.update_sessions_list)
+
+            # Connect chat window signals
+            chat_window.send_chat_message.connect(
+                lambda msg: FileTransferService.send_chat_message(
+                    session_id, "host", msg
+                )
+            )
+            # File sending is now handled directly in chat_window
+            # chat_window.send_file.connect(
+            #     lambda path: FileTransferService.send_file(session_id, path, "host")
+            # )
+            chat_window.disconnect_requested.connect(
+                lambda: SendHandler.send_end_session_packet(session_id)
+            )
+
+            # Show chat window
+            chat_window.show()
+
+            # Show connection notification
+            message = (
+                f"{partner_hostname} has connected and is controlling your computer."
+            )
+            self.notification_requested.emit(message, "info")
+
+            logger.info(
+                f"Chat window created for host session {session_id} with {partner_hostname}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating chat window for session {session_id}: {e}",
+                exc_info=True,
+            )
+
+    @pyqtSlot(str, str)
+    def create_controller_chat_window(self, session_id: str, partner_hostname: str):
+        """Create chat window for controller session - must be called in main Qt thread"""
+        try:
+            from client.gui.chat_window import ChatWindow
+            from client.managers.session_manager import SessionManager
+            from client.services.file_transfer_service import FileTransferService
+            from client.handlers.send_handler import SendHandler
+
+            chat_window = ChatWindow(
+                partner_hostname=partner_hostname,
+                role="controller",
+                session_id=session_id,
+            )
+            SessionManager.set_chat_window(session_id, chat_window)
+
+            # Connect sessions_updated signal to update chat window's sessions list
+            self.sessions_updated.connect(chat_window.update_sessions_list)
+
+            # Connect chat window signals
+            chat_window.send_chat_message.connect(
+                lambda msg: FileTransferService.send_chat_message(
+                    session_id, "controller", msg
+                )
+            )
+            # File sending is now handled directly in chat_window
+            # chat_window.send_file.connect(
+            #     lambda path: FileTransferService.send_file(
+            #         session_id, path, "controller"
+            #     )
+            # )
+            chat_window.disconnect_requested.connect(
+                lambda: SendHandler.send_end_session_packet(session_id)
+            )
+
+            # Show chat window
+            chat_window.show()
+
+            # Show connection notification
+            message = f"Connected to {partner_hostname}."
+            self.notification_requested.emit(message, "info")
+
+            logger.info(
+                f"Chat window created for controller session {session_id} with {partner_hostname}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating chat window for session {session_id}: {e}",
+                exc_info=True,
+            )
+
+    def open_chat_for_session(self, session_id: str):
+        """Open chat window for an existing session"""
+        from client.managers.session_manager import SessionManager
+
+        session = SessionManager._sessions.get(session_id)
+        if not session:
+            self.notification_requested.emit("Session not found", "error")
+            return
+
+        # If chat window already exists, just show and focus it
+        if session.chat_window:
+            session.chat_window.show()
+            session.chat_window.activateWindow()
+            session.chat_window.raise_()
+            return
+
+        # Create new chat window
+        try:
+            from client.gui.chat_window import ChatWindow
+            from client.services.file_transfer_service import FileTransferService
+            from client.handlers.send_handler import SendHandler
+
+            partner_hostname = session.partner_hostname or "Unknown"
+            role = session.role
+
+            chat_window = ChatWindow(
+                partner_hostname=partner_hostname, role=role, session_id=session_id
+            )
+            SessionManager.set_chat_window(session_id, chat_window)
+
+            # Connect sessions_updated signal to update chat window's sessions list
+            self.sessions_updated.connect(chat_window.update_sessions_list)
+
+            # Connect chat window signals
+            chat_window.send_chat_message.connect(
+                lambda msg: FileTransferService.send_chat_message(session_id, role, msg)
+            )
+            chat_window.disconnect_requested.connect(
+                lambda: SendHandler.send_end_session_packet(session_id)
+            )
+
+            # Show chat window
+            chat_window.show()
+
+            logger.info(f"Chat window opened for session {session_id}")
+        except Exception as e:
+            logger.error(
+                f"Error opening chat window for session {session_id}: {e}",
+                exc_info=True,
+            )
+            self.notification_requested.emit("Failed to open chat window", "error")
 
     # --- Dọn dẹp ---
     def cleanup(self):

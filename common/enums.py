@@ -60,7 +60,11 @@ class PacketType(Enum):
     SESSION = "session/control"
 
     CHAT_MESSAGE = "comm/chat"
-    FILE_TRANSFER = "comm/file"
+    FILE_METADATA = "comm/file-metadata"
+    FILE_ACCEPT = "comm/file-accept"
+    FILE_REJECT = "comm/file-reject"
+    FILE_CHUNK = "comm/file-chunk"
+    FILE_COMPLETE = "comm/file-complete"
 
     VIDEO_STREAM = "media/video-stream"
     VIDEO_CONFIG = "media/video-config"

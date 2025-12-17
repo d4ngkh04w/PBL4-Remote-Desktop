@@ -18,6 +18,12 @@ from common.packets import (
     SessionPacket,
     VideoStreamPacket,
     VideoConfigPacket,
+    ChatMessagePacket,
+    FileMetadataPacket,
+    FileAcceptPacket,
+    FileRejectPacket,
+    FileChunkPacket,
+    FileCompletePacket,
 )
 from common.enums import Status
 from server.client_manager import ClientManager
@@ -93,9 +99,14 @@ class RelayHandler:
                 SessionPacket: cls.__handle_session_packet,
                 VideoStreamPacket: cls.__relay_stream_packet,
                 VideoConfigPacket: cls.__relay_stream_packet,
-                # CursorInfoPacket removed - cursor info now embedded in VideoStreamPacket
                 MousePacket: cls.__relay_stream_packet,
                 KeyboardPacket: cls.__relay_stream_packet,
+                ChatMessagePacket: cls.__relay_stream_packet,
+                FileMetadataPacket: cls.__relay_stream_packet,
+                FileAcceptPacket: cls.__relay_stream_packet,
+                FileRejectPacket: cls.__relay_stream_packet,
+                FileChunkPacket: cls.__relay_stream_packet,
+                FileCompletePacket: cls.__relay_stream_packet,
             }
 
     @staticmethod
@@ -185,11 +196,29 @@ class RelayHandler:
                 host_id=sender_id,
                 timeout=Config.session_timeout,
             )
+
+            host_info = ClientManager.get_client_info(sender_id)
+            controller_info = ClientManager.get_client_info(receiver_id)
+            host_hostname = (
+                host_info.get("host_name", "Unknown") if host_info else "Unknown"
+            )
+            controller_hostname = (
+                controller_info.get("host_name", "Unknown")
+                if controller_info
+                else "Unknown"
+            )
+
             host_session_packet = SessionPacket(
-                status=Status.SESSION_STARTED, session_id=session_id, role="host"
+                status=Status.SESSION_STARTED,
+                session_id=session_id,
+                role="host",
+                partner_hostname=controller_hostname,
             )
             controller_session_packet = SessionPacket(
-                status=Status.SESSION_STARTED, session_id=session_id, role="controller"
+                status=Status.SESSION_STARTED,
+                session_id=session_id,
+                role="controller",
+                partner_hostname=host_hostname,
             )
             sender_queue.put(host_session_packet)
             receiver_queue.put(controller_session_packet)
@@ -229,7 +258,18 @@ class RelayHandler:
 
     @staticmethod
     def __relay_stream_packet(
-        packet: MousePacket | KeyboardPacket | VideoStreamPacket | VideoConfigPacket,
+        packet: (
+            MousePacket
+            | KeyboardPacket
+            | VideoStreamPacket
+            | VideoConfigPacket
+            | ChatMessagePacket
+            | FileMetadataPacket
+            | FileAcceptPacket
+            | FileRejectPacket
+            | FileChunkPacket
+            | FileCompletePacket
+        ),
         sender_id: str,
     ):
         """Chuyển tiếp các gói tin stream"""

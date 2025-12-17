@@ -16,6 +16,12 @@ from common.packets import (
     VideoConfigPacket,
     VideoStreamPacket,
     AuthenticationPasswordPacket,
+    ChatMessagePacket,
+    FileMetadataPacket,
+    FileAcceptPacket,
+    FileRejectPacket,
+    FileChunkPacket,
+    FileCompletePacket,
     Packet,
 )
 
@@ -37,6 +43,12 @@ class ReceiveHandler:
             VideoStreamPacket: cls.__handle_video_stream_packet,
             KeyboardPacket: cls.__handle_keyboard_packet,
             MousePacket: cls.__handle_mouse_packet,
+            ChatMessagePacket: cls.__handle_chat_message_packet,
+            FileMetadataPacket: cls.__handle_file_metadata_packet,
+            FileAcceptPacket: cls.__handle_file_accept_packet,
+            FileRejectPacket: cls.__handle_file_reject_packet,
+            FileChunkPacket: cls.__handle_file_chunk_packet,
+            FileCompletePacket: cls.__handle_file_complete_packet,
         }
         handler = packet_handlers.get(type(packet))
         if handler:
@@ -99,7 +111,11 @@ class ReceiveHandler:
                 return
             logger.info(f"Session started: {packet.session_id} as {packet.role}")
 
-            SessionManager.create_session(packet.session_id, packet.role)
+            SessionManager.create_session(
+                packet.session_id,
+                packet.role,
+                partner_hostname=packet.partner_hostname or "Unknown",
+            )
 
         # Nếu session kết thúc, dọn dẹp
         elif (
@@ -192,4 +208,74 @@ class ReceiveHandler:
         MouseExecutorService.execute_mouse_event(packet)
         logger.debug(
             f"Executed mouse event: {packet.event_type.value} - Position: {packet.position} - Button: {packet.button.value}"
+        )
+
+    @staticmethod
+    def __handle_chat_message_packet(packet: ChatMessagePacket):
+        """Xử lý ChatMessagePacket - hiển thị tin nhắn chat"""
+        if not packet.session_id or not packet.message:
+            logger.error("Received ChatMessagePacket with empty fields.")
+            return
+
+        SessionManager.handle_chat_message(
+            packet.session_id, packet.sender_role, packet.message, packet.timestamp
+        )
+
+    @staticmethod
+    def __handle_file_metadata_packet(packet: FileMetadataPacket):
+        """Xử lý FileMetadataPacket - nhận thông tin file"""
+        if not packet.session_id or not packet.file_id or not packet.filename:
+            logger.error("Received FileMetadataPacket with empty fields.")
+            return
+
+        SessionManager.handle_file_metadata(
+            packet.session_id,
+            packet.file_id,
+            packet.filename,
+            packet.filesize,
+            packet.sender_role,
+        )
+
+    @staticmethod
+    def __handle_file_accept_packet(packet: FileAcceptPacket):
+        """Xử lý FileAcceptPacket - bên gửi nhận được xác nhận"""
+        if not packet.session_id or not packet.file_id:
+            logger.error("Received FileAcceptPacket with empty fields.")
+            return
+
+        SessionManager.handle_file_accept(packet.session_id, packet.file_id)
+
+    @staticmethod
+    def __handle_file_reject_packet(packet: FileRejectPacket):
+        """Xử lý FileRejectPacket - bên gửi nhận được từ chối"""
+        if not packet.session_id or not packet.file_id:
+            logger.error("Received FileRejectPacket with empty fields.")
+            return
+
+        SessionManager.handle_file_reject(packet.session_id, packet.file_id)
+
+    @staticmethod
+    def __handle_file_chunk_packet(packet: FileChunkPacket):
+        """Xử lý FileChunkPacket - nhận chunk dữ liệu file"""
+        if not packet.session_id or not packet.file_id or packet.chunk_data is None:
+            logger.error("Received FileChunkPacket with empty fields.")
+            return
+
+        SessionManager.handle_file_chunk(
+            packet.session_id,
+            packet.file_id,
+            packet.chunk_index,
+            packet.chunk_data,
+            packet.total_chunks,
+        )
+
+    @staticmethod
+    def __handle_file_complete_packet(packet: FileCompletePacket):
+        """Xử lý FileCompletePacket - file đã được gửi xong"""
+        if not packet.session_id or not packet.file_id:
+            logger.error("Received FileCompletePacket with empty fields.")
+            return
+
+        SessionManager.handle_file_complete(
+            packet.session_id, packet.file_id, packet.success, packet.message
         )
