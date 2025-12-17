@@ -267,6 +267,12 @@ class MainWindowController(QObject):
             from client.services.file_transfer_service import FileTransferService
             from client.handlers.send_handler import SendHandler
 
+            # Check if chat window already exists for this session
+            session = SessionManager.get_session(session_id)
+            if session and session.chat_window:
+                logger.info(f"Chat window already exists for session {session_id}")
+                return
+
             chat_window = ChatWindow(
                 partner_hostname=partner_hostname, role="host", session_id=session_id
             )
@@ -315,6 +321,12 @@ class MainWindowController(QObject):
             from client.managers.session_manager import SessionManager
             from client.services.file_transfer_service import FileTransferService
             from client.handlers.send_handler import SendHandler
+
+            # Check if chat window already exists for this session
+            session = SessionManager.get_session(session_id)
+            if session and session.chat_window:
+                logger.info(f"Chat window already exists for session {session_id}")
+                return
 
             chat_window = ChatWindow(
                 partner_hostname=partner_hostname,

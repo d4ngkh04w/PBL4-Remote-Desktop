@@ -214,11 +214,27 @@ class SessionManager:
             session_id in cls._sessions
             and cls._sessions[session_id].role == "controller"
         ):
+            session = cls._sessions[session_id]
+
+            # Close chat window before deleting session
+            if session.chat_window and hasattr(session.chat_window, "close"):
+                from PyQt5.QtCore import QMetaObject, Qt
+
+                QMetaObject.invokeMethod(
+                    session.chat_window, "close", Qt.ConnectionType.QueuedConnection
+                )
+                logger.info(f"Chat window closed for controller session {session_id}")
+
             del cls._sessions[session_id]
             from client.handlers.send_handler import SendHandler
 
             logger.info(f"Send end session packet for: {session_id}")
             SendHandler.send_end_session_packet(session_id)
+
+            # Notify controller that session ended
+            from client.controllers.main_window_controller import main_window_controller
+
+            main_window_controller.on_session_ended()
         else:
             logger.warning(f"Attempted to remove non-controller session: {session_id}")
 
@@ -244,6 +260,17 @@ class SessionManager:
 
                     QMetaObject.invokeMethod(
                         session.widget, "close", Qt.ConnectionType.QueuedConnection
+                    )
+
+                # Close chat window for controller
+                if session.chat_window and hasattr(session.chat_window, "close"):
+                    from PyQt5.QtCore import QMetaObject, Qt
+
+                    QMetaObject.invokeMethod(
+                        session.chat_window, "close", Qt.ConnectionType.QueuedConnection
+                    )
+                    logger.info(
+                        f"Chat window closed for controller session {session_id}"
                     )
 
             elif session.role == "host":

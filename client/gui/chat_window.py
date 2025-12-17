@@ -41,6 +41,11 @@ class ChatWindow(QWidget):
         self.is_collapsed = False  # Collapsed state
         self.expanded_width = 600  # Store expanded width
         self.sessions_list_layout = None
+
+        # Drag window variables
+        self._drag_pos = None
+        self._is_dragging = False
+
         self.init_ui()
         self.position_at_right()
         self.update_sessions_list()
@@ -85,7 +90,7 @@ class ChatWindow(QWidget):
         )
         self.collapse_toggle_btn.setFixedSize(30, 60)
         self.collapse_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.collapse_toggle_btn.setText("◀")
+        self.collapse_toggle_btn.setText("▶")
         self.collapse_toggle_btn.setToolTip("Collapse")
         self.collapse_toggle_btn.setStyleSheet(
             """
@@ -108,10 +113,6 @@ class ChatWindow(QWidget):
         self.collapse_toggle_btn.show()
 
         # Position will be updated in update_collapse_button_position()
-
-        # Title bar
-        title_bar = self.create_title_bar()
-        container_layout.addWidget(title_bar)
 
         # Horizontal layout for sidebar and content
         h_layout = QHBoxLayout()
@@ -288,54 +289,14 @@ class ChatWindow(QWidget):
         """
         )
 
-    def create_title_bar(self):
-        """Create custom title bar"""
-        title_bar = QWidget()
-        title_bar.setFixedHeight(40)
-        title_bar.setStyleSheet("background-color: #000;")
-
-        layout = QHBoxLayout(title_bar)
-        layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(10)
-
-        # Title
-        title_label = QLabel("Remote Chat")
-        title_label.setStyleSheet("color: white; font-weight: bold; font-size: 14px;")
-        layout.addWidget(title_label)
-
-        layout.addStretch()
-
-        # Hide/Show button
-        hide_btn = QPushButton("<")
-        hide_btn.setFixedSize(30, 30)
-        hide_btn.setToolTip("Hide Chat")
-        hide_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent;
-                color: white;
-                border: none;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border-radius: 5px;
-            }
-        """
-        )
-        hide_btn.clicked.connect(self.toggle_visibility)
-        layout.addWidget(hide_btn)
-
-        return title_bar
-
     def position_at_right(self):
         """Position window at right side of screen"""
         from PyQt5.QtWidgets import QApplication
 
         screen = QApplication.primaryScreen().availableGeometry()
-        x = screen.width() - self.width()
-        y = (screen.height() - self.height()) // 2
+        # Use screen offset for multi-monitor and Linux compatibility
+        x = screen.x() + screen.width() - self.width()
+        y = screen.y() + (screen.height() - self.height()) // 2
         self.move(x, y)
 
     def toggle_collapse(self):
@@ -358,7 +319,7 @@ class ChatWindow(QWidget):
         self.main_container.hide()
 
         # Change button text and tooltip
-        self.collapse_toggle_btn.setText("▶")
+        self.collapse_toggle_btn.setText("◀")
         self.collapse_toggle_btn.setToolTip("Expand")
 
         # Get screen geometry
@@ -372,7 +333,7 @@ class ChatWindow(QWidget):
         start_rect = self.geometry()
         end_rect = self.geometry()
         # Move window completely off-screen (hide it)
-        end_rect.moveLeft(screen.width())
+        end_rect.moveLeft(screen.x() + screen.width())
 
         self.animation.setStartValue(start_rect)
         self.animation.setEndValue(end_rect)
@@ -387,7 +348,7 @@ class ChatWindow(QWidget):
         self.is_collapsed = False
 
         # Change button text and tooltip
-        self.collapse_toggle_btn.setText("◀")
+        self.collapse_toggle_btn.setText("▶")
         self.collapse_toggle_btn.setToolTip("Collapse")
 
         # Get screen geometry
@@ -401,7 +362,7 @@ class ChatWindow(QWidget):
         start_rect = self.geometry()
         end_rect = self.geometry()
         end_rect.setWidth(self.expanded_width)
-        end_rect.moveLeft(screen.width() - self.expanded_width)
+        end_rect.moveLeft(screen.x() + screen.width() - self.expanded_width)
 
         self.animation.setStartValue(start_rect)
         self.animation.setEndValue(end_rect)
@@ -418,9 +379,11 @@ class ChatWindow(QWidget):
         """Toggle chat window visibility"""
         if self.is_visible:
             self.hide()
+            self.collapse_toggle_btn.hide()
             self.is_visible = False
         else:
             self.show()
+            self.collapse_toggle_btn.show()
             self.position_at_right()
             self.is_visible = True
 
@@ -430,10 +393,9 @@ class ChatWindow(QWidget):
             return
 
         # Position button just outside the left edge of the window
-        window_pos = self.frameGeometry().topLeft()
-        y = (
-            self.frameGeometry().top() + (self.height() - 60) // 2
-        )  # 60 is button height
+        # Use geometry() instead of frameGeometry() for Linux compatibility
+        window_pos = self.geometry().topLeft()
+        y = self.geometry().top() + (self.height() - 60) // 2  # 60 is button height
         x = window_pos.x() - 30  # 30px to the left of window
 
         self.collapse_toggle_btn.move(x, y)
@@ -441,7 +403,38 @@ class ChatWindow(QWidget):
     def showEvent(self, event):
         """Handle show event to position button correctly"""
         super().showEvent(event)
+        self.collapse_toggle_btn.show()
         self.update_collapse_button_position()
+
+    def hideEvent(self, event):
+        """Handle hide event to hide button"""
+        super().hideEvent(event)
+        self.collapse_toggle_btn.hide()
+
+    def closeEvent(self, event):
+        """Handle close event to cleanup button"""
+        self.collapse_toggle_btn.close()
+        super().closeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Start dragging window"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = True
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        """Drag window"""
+        if self._is_dragging and event.buttons() == Qt.MouseButton.LeftButton:
+            self.move(event.globalPos() - self._drag_pos)
+            self.update_collapse_button_position()
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        """Stop dragging window"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = False
+            event.accept()
 
     def resizeEvent(self, event):
         """Handle resize event to reposition button"""
