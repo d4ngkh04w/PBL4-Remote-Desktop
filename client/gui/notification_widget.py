@@ -91,9 +91,11 @@ class NotificationWidget(QWidget):
         message_label = QLabel(self.message)
         message_label.setWordWrap(True)
         message_label.setStyleSheet(
-            "color: #000; font-size: 12px; background: transparent;"
+            "color: #000; font-size: 12px; font-weight: normal; background: transparent;"
         )
-        message_label.setFont(QFont("Arial", 11))
+        font = QFont("Arial", 11)
+        font.setWeight(QFont.Weight.Normal)
+        message_label.setFont(font)
         main_layout.addWidget(message_label, 1)
 
         # Close button
@@ -129,10 +131,8 @@ class NotificationWidget(QWidget):
         """
         )
 
-        # Opacity effect for fade animation
-        self.opacity_effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.opacity_effect)
-        self.opacity_effect.setOpacity(1.0)
+        # Set initial window opacity
+        self.setWindowOpacity(1.0)
 
     def position_at_bottom_right(self):
         """Position the notification at bottom-right of screen"""
@@ -147,18 +147,10 @@ class NotificationWidget(QWidget):
 
     def fade_out(self):
         """Fade out animation before closing"""
-        self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.animation.setDuration(500)
+        self.animation = QPropertyAnimation(self, b"windowOpacity")
+        self.animation.setDuration(300)
         self.animation.setStartValue(1.0)
         self.animation.setEndValue(0.0)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
         self.animation.finished.connect(self.close)
         self.animation.start()
-
-    @pyqtProperty(float)
-    def opacity(self):
-        return self.opacity_effect.opacity()
-
-    @opacity.setter
-    def opacity(self, value):
-        self.opacity_effect.setOpacity(value)

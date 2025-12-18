@@ -447,6 +447,20 @@ class ChatWindow(QWidget):
         if timestamp == 0.0:
             timestamp = datetime.now().timestamp()
 
+        # Save message to session history
+        from client.managers.session_manager import SessionManager
+
+        if self.session_id and self.session_id in SessionManager._sessions:
+            session = SessionManager._sessions[self.session_id]
+            session.chat_messages.append(
+                {"sender_role": sender_role, "message": message, "timestamp": timestamp}
+            )
+
+        # Display the message
+        self._display_message(sender_role, message, timestamp)
+
+    def _display_message(self, sender_role: str, message: str, timestamp: float):
+        """Display a chat message in the UI"""
         msg_widget = QFrame()
         msg_widget.setStyleSheet(
             """
@@ -654,8 +668,36 @@ class ChatWindow(QWidget):
         )
 
     def on_disconnect(self):
-        """Handle disconnect button click"""
-        self.disconnect_requested.emit()
+        """Handle disconnect button click - disconnect current session"""
+        from client.managers.session_manager import SessionManager
+
+        if not self.session_id:
+            return
+
+        current_session_id = self.session_id
+
+        # Clear chat messages for this session before removing
+        if current_session_id in SessionManager._sessions:
+            session = SessionManager._sessions[current_session_id]
+            session.chat_messages.clear()
+
+        # Clear chat display
+        while self.chat_layout.count() > 1:  # Keep the stretch at the end
+            item = self.chat_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
+
+        # Remove session completely (will close widget, stop screen sharing, etc.)
+        SessionManager.remove_session(current_session_id, send_end_packet=True)
+
+        # Check if there are any remaining sessions
+        remaining_sessions = list(SessionManager._sessions.keys())
+        if len(remaining_sessions) == 0:
+            # No more sessions, close chat window
+            self.close()
+        else:
+            # Switch to first remaining session
+            self.switch_to_session(remaining_sessions[0])
 
     def update_partner_name(self, hostname: str):
         """Update the partner hostname display"""
@@ -950,7 +992,7 @@ class ChatWindow(QWidget):
         layout.setSpacing(8)
 
         # Header
-        header = QLabel("Máy tính bạn đang xem")
+        header = QLabel("Your Connections")
         header.setStyleSheet(
             """
             color: #000;
@@ -1056,7 +1098,7 @@ class ChatWindow(QWidget):
             """
             )
 
-        btn.clicked.connect(lambda: self.switch_to_session(session_id))
+        btn.clicked.connect(lambda checked, sid=session_id: self.switch_to_session(sid))
 
         return btn
 
@@ -1065,9 +1107,36 @@ class ChatWindow(QWidget):
         if session_id == self.session_id:
             return  # Already viewing this session
 
-        from client.controllers.main_window_controller import main_window_controller
+        from client.managers.session_manager import SessionManager
 
-        main_window_controller.open_chat_for_session(session_id)
+        session = SessionManager._sessions.get(session_id)
+        if not session:
+            return
+
+        # Save current chat messages to current session
+        if self.session_id and self.session_id in SessionManager._sessions:
+            current_session = SessionManager._sessions[self.session_id]
+            # Messages are already saved when added via add_message
+
+        # Switch to new session
+        self.session_id = session_id
+        self.partner_hostname = session.partner_hostname
+        self.role = session.role
+
+        # Clear current chat display
+        while self.chat_layout.count() > 1:  # Keep the stretch at the end
+            item = self.chat_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Load messages from new session
+        for msg_data in session.chat_messages:
+            self._display_message(
+                msg_data["sender_role"], msg_data["message"], msg_data["timestamp"]
+            )
+
+        # Update sessions list to highlight current session
+        self.update_sessions_list()
 
     def _reject_file(self, file_id: str, filename: str, sender_role: str):
         """Reject an incoming file"""

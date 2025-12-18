@@ -34,6 +34,7 @@ class MainWindowController(QObject):
         super().__init__()
         self.__running = False
         self.view = None  # Reference to view for accessing theme state
+        self.shared_chat_window = None  # Single shared chat window for all sessions
         logger.debug("MainWindowController initialized.")
 
     def set_view(self, view):
@@ -260,22 +261,27 @@ class MainWindowController(QObject):
     # --- Chat Window Creation (called from main thread) ---
     @pyqtSlot(str, str)
     def create_host_chat_window(self, session_id: str, partner_hostname: str):
-        """Create chat window for host session - must be called in main Qt thread"""
+        """Create or reuse shared chat window for host session"""
         try:
             from client.gui.chat_window import ChatWindow
             from client.managers.session_manager import SessionManager
             from client.services.file_transfer_service import FileTransferService
             from client.handlers.send_handler import SendHandler
 
-            # Check if chat window already exists for this session
-            session = SessionManager.get_session(session_id)
-            if session and session.chat_window:
-                logger.info(f"Chat window already exists for session {session_id}")
-                return
+            # Use shared chat window if it exists, otherwise create new one
+            if not self.shared_chat_window:
+                self.shared_chat_window = ChatWindow(
+                    partner_hostname=partner_hostname,
+                    role="host",
+                    session_id=session_id,
+                )
+                chat_window = self.shared_chat_window
+            else:
+                # Switch existing chat window to this session
+                chat_window = self.shared_chat_window
+                chat_window.switch_to_session(session_id)
 
-            chat_window = ChatWindow(
-                partner_hostname=partner_hostname, role="host", session_id=session_id
-            )
+            # Store reference in session
             SessionManager.set_chat_window(session_id, chat_window)
 
             # Connect sessions_updated signal to update chat window's sessions list
@@ -315,24 +321,27 @@ class MainWindowController(QObject):
 
     @pyqtSlot(str, str)
     def create_controller_chat_window(self, session_id: str, partner_hostname: str):
-        """Create chat window for controller session - must be called in main Qt thread"""
+        """Create or reuse shared chat window for controller session"""
         try:
             from client.gui.chat_window import ChatWindow
             from client.managers.session_manager import SessionManager
             from client.services.file_transfer_service import FileTransferService
             from client.handlers.send_handler import SendHandler
 
-            # Check if chat window already exists for this session
-            session = SessionManager.get_session(session_id)
-            if session and session.chat_window:
-                logger.info(f"Chat window already exists for session {session_id}")
-                return
+            # Use shared chat window if it exists, otherwise create new one
+            if not self.shared_chat_window:
+                self.shared_chat_window = ChatWindow(
+                    partner_hostname=partner_hostname,
+                    role="controller",
+                    session_id=session_id,
+                )
+                chat_window = self.shared_chat_window
+            else:
+                # Switch existing chat window to this session
+                chat_window = self.shared_chat_window
+                chat_window.switch_to_session(session_id)
 
-            chat_window = ChatWindow(
-                partner_hostname=partner_hostname,
-                role="controller",
-                session_id=session_id,
-            )
+            # Store reference in session
             SessionManager.set_chat_window(session_id, chat_window)
 
             # Connect sessions_updated signal to update chat window's sessions list
@@ -371,7 +380,7 @@ class MainWindowController(QObject):
             )
 
     def open_chat_for_session(self, session_id: str):
-        """Open chat window for an existing session"""
+        """Switch shared chat window to an existing session"""
         from client.managers.session_manager import SessionManager
 
         session = SessionManager._sessions.get(session_id)
@@ -379,11 +388,12 @@ class MainWindowController(QObject):
             self.notification_requested.emit("Session not found", "error")
             return
 
-        # If chat window already exists, just show and focus it
-        if session.chat_window:
-            session.chat_window.show()
-            session.chat_window.activateWindow()
-            session.chat_window.raise_()
+        # If shared chat window exists, switch to this session
+        if self.shared_chat_window:
+            self.shared_chat_window.switch_to_session(session_id)
+            self.shared_chat_window.show()
+            self.shared_chat_window.activateWindow()
+            self.shared_chat_window.raise_()
             return
 
         # Create new chat window

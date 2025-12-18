@@ -123,6 +123,21 @@ class ReceiveHandler:
             or packet.status == Status.SESSION_TIMEOUT
         ):
             logger.debug(f"Received session ended for: {packet.session_id}")
+
+            # Get partner hostname before removing session
+            partner_name = "Partner"
+            if packet.session_id in SessionManager._sessions:
+                session = SessionManager._sessions[packet.session_id]
+                partner_name = session.partner_hostname or "Partner"
+
+            # Show notification to user
+            if main_window_controller:
+                if packet.status == Status.SESSION_TIMEOUT:
+                    message = f"Session with {partner_name} has timed out."
+                else:
+                    message = f"{partner_name} has disconnected."
+                main_window_controller.on_ui_show_notification(message, "info")
+
             SessionManager.remove_session(packet.session_id, False)
 
     # ----------------------------

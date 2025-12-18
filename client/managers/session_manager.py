@@ -19,6 +19,7 @@ class SessionResources:
     pending_file_transfers: Dict[str, Dict[str, Any]] = field(
         default_factory=dict
     )  # File transfer state
+    chat_messages: list = field(default_factory=list)  # Store chat history
 
 
 class SessionManager:
