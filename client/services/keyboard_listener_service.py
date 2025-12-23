@@ -16,6 +16,9 @@ class KeyboardListenerService:
     và chuyển đổi thành KeyboardPacket để gửi đi
     """
 
+    # Tracking pressed modifier keys per session to handle sticky keys
+    __pressed_modifiers = {}  # {session_id: set of pressed modifier names}
+
     # Mapping các phím đặc biệt Qt sang tên phím
     SPECIAL_KEYS = {
         Qt.Key.Key_Control: "ctrl",
@@ -63,6 +66,10 @@ class KeyboardListenerService:
         Xử lý sự kiện bàn phím từ widget
         """
         try:
+            # Bỏ qua auto-repeat events để tránh gửi hàng trăm packet khi giữ phím
+            if event.isAutoRepeat():
+                return
+
             # Xác định loại sự kiện
             event_type = (
                 KeyBoardEventType.PRESS
@@ -89,7 +96,7 @@ class KeyboardListenerService:
                 Qt.Key.Key_Meta,
             ]:
                 cls.__handle_key_combination(event, event_type, session_id)
-            # Xử lý phím đặc biệt
+            # Xử lý phím đặc biệt (bao gồm cả modifier keys)
             elif key in cls.SPECIAL_KEYS:
                 cls.__handle_special_key(event, event_type, session_id)
             # Xử lý phím ký tự thông thường
@@ -106,6 +113,16 @@ class KeyboardListenerService:
         """Xử lý phím đặc biệt (Ctrl, Shift, Alt, F1-F12, ...)"""
         key_name = cls.SPECIAL_KEYS.get(event.key())
         if key_name:
+            # Track modifier key states
+            if key_name in ["ctrl", "shift", "alt", "meta"]:
+                if session_id not in cls.__pressed_modifiers:
+                    cls.__pressed_modifiers[session_id] = set()
+
+                if event_type == KeyBoardEventType.PRESS:
+                    cls.__pressed_modifiers[session_id].add(key_name)
+                else:
+                    cls.__pressed_modifiers[session_id].discard(key_name)
+
             packet = KeyboardPacket(
                 event_type=event_type,
                 key_type=KeyBoardType.KEY,
@@ -142,6 +159,30 @@ class KeyboardListenerService:
         logger.debug(
             f"Sent character key packet: {key_value} ({event_type.value}) for session {session_id}"
         )
+
+    @classmethod
+    def clear_all_modifiers(cls, session_id: str):
+        """
+        Release tất cả các modifier keys đang được giữ
+        Sử dụng khi widget mất focus để tránh sticky keys
+        """
+        if session_id not in cls.__pressed_modifiers:
+            return
+
+        pressed = cls.__pressed_modifiers[session_id].copy()
+        for modifier_name in pressed:
+            packet = KeyboardPacket(
+                event_type=KeyBoardEventType.RELEASE,
+                key_type=KeyBoardType.KEY,
+                key_value=modifier_name,
+                session_id=session_id,
+            )
+            SenderService.send_packet(packet)
+            logger.debug(
+                f"Released stuck modifier: {modifier_name} for session {session_id}"
+            )
+
+        cls.__pressed_modifiers[session_id].clear()
 
     @classmethod
     def __handle_key_combination(
@@ -187,9 +228,15 @@ class KeyboardListenerService:
     @classmethod
     def start_listening(cls, session_id: str):
         """Bắt đầu lắng nghe sự kiện bàn phím cho session"""
+        if session_id not in cls.__pressed_modifiers:
+            cls.__pressed_modifiers[session_id] = set()
         logger.info(f"Keyboard listener started for session: {session_id}")
 
     @classmethod
     def stop_listening(cls, session_id: str):
         """Dừng lắng nghe sự kiện bàn phím cho session"""
+        # Clear all pressed modifiers before stopping
+        cls.clear_all_modifiers(session_id)
+        if session_id in cls.__pressed_modifiers:
+            del cls.__pressed_modifiers[session_id]
         logger.info(f"Keyboard listener stopped for session: {session_id}")

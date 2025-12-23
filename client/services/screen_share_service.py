@@ -38,6 +38,10 @@ class ScreenShareService:
         self.__encoder = None
         self.__screen_config = None  # Dict chứa monitor info
 
+        # Cache cursor info để chỉ gửi khi thay đổi
+        self.__last_cursor_type = None
+        self.__last_cursor_position = None
+
         logger.info("CentralizedScreenShareService initialized")
 
     def add_session(self, session_id: str):
@@ -193,25 +197,43 @@ class ScreenShareService:
                         time.sleep(frame_delay)
                         continue
 
-                        # LẤY THÔNG TIN CURSOR
+                    # LẤY THÔNG TIN CURSOR - chỉ khi thay đổi
                     cursor_info = get_cursor_info_for_monitor(
                         self.__screen_config["monitor"], self.__mouse_controller
                     )
 
+                    # Kiểm tra xem cursor có thay đổi không
+                    cursor_changed = False
+                    cursor_type_to_send = None
+                    cursor_pos_to_send = None
+
+                    if cursor_info:
+                        current_type = cursor_info.get("cursor_type")
+                        current_pos = cursor_info.get("position")
+
+                        # Chỉ gửi khi type hoặc position thay đổi
+                        if (
+                            current_type != self.__last_cursor_type
+                            or current_pos != self.__last_cursor_position
+                        ):
+                            cursor_changed = True
+                            cursor_type_to_send = current_type
+                            cursor_pos_to_send = current_pos
+                            self.__last_cursor_type = current_type
+                            self.__last_cursor_position = current_pos
+
                     video_data = self.__encoder.encode(img)
 
-                    # Gửi video packet với cursor info
+                    # Gửi video packet - chỉ kèm cursor info khi có thay đổi
                     if video_data:
                         try:
                             SendHandler.send_video_stream_packet(
                                 video_data=video_data,
                                 cursor_type=(
-                                    cursor_info.get("cursor_type")
-                                    if cursor_info
-                                    else None
+                                    cursor_type_to_send if cursor_changed else None
                                 ),
                                 cursor_position=(
-                                    cursor_info.get("position") if cursor_info else None
+                                    cursor_pos_to_send if cursor_changed else None
                                 ),
                             )
 

@@ -163,14 +163,14 @@ class SessionManager:
             )
             pixmap = QPixmap.fromImage(qimage)
 
-            # Gửi frame cho widget
-            session.widget.controller.handle_decoded_frame(pixmap)
+            # Gửi frame cho widget - Qt signals đã thread-safe, emit trực tiếp
+            session.widget.controller.frame_decoded.emit(pixmap)
 
             # Nếu có thông tin con trỏ, gửi luôn để overlay vẽ lên frame
             if cursor_type and cursor_position is not None:
                 try:
                     # visible default là True (chúng ta không gửi visible riêng)
-                    session.widget.controller.handle_cursor_info(
+                    session.widget.controller.cursor_info_received.emit(
                         cursor_type, cursor_position, True
                     )
                 except Exception:
@@ -246,6 +246,11 @@ class SessionManager:
             session = cls._sessions[session_id]
 
             if session.role == "controller":
+                # Stop video queue trước
+                from client.services.listener_service import ListenerService
+
+                ListenerService.stop_video_queue(session_id)
+
                 # Cleanup decoder trước
                 if session.decoder and hasattr(session.decoder, "close"):
                     session.decoder.close()

@@ -86,36 +86,46 @@ class RemoteWidget(QWidget):
 
     @pyqtSlot(str, tuple, bool)
     def update_cursor_overlay(self, cursor_type: str, position: tuple, visible: bool):
-        """Cập nhật thông tin cursor và vẽ lại overlay."""
+        """Cập nhật thông tin cursor và vẽ lại nếu có thay đổi."""
+        # Kiểm tra xem cursor có thay đổi không
+        cursor_changed = (
+            cursor_type != self.__cursor_type
+            or position != self.__cursor_position
+            or visible != self.__cursor_visible
+        )
+
         self.__cursor_type = cursor_type
         self.__cursor_position = position
         self.__cursor_visible = visible
-        # Vẽ lại frame với cursor mới
-        self.__scale_and_display()
+
+        # Chỉ vẽ lại khi cursor thay đổi, KHÔNG vẽ lại mỗi frame
+        if cursor_changed and self.__current_pixmap:
+            self.__scale_and_display()
 
     @pyqtSlot(str)
     def show_error(self, message: str):
         """Hiển thị thông báo lỗi."""
         self.image_label.clear()
-        self.image_label.setText(f"❌ Error: {message}")
+        self.image_label.setText(f"Error: {message}")
 
     def __scale_and_display(self):
-        """Scale pixmap gốc và hiển thị vừa với widget, vẽ cursor overlay."""
+        """Scale pixmap gốc và hiển thị vừa với widget, vẽ cursor nếu có."""
         if not self.__current_pixmap:
             return
 
-        # Tạo bản sao của pixmap gốc để vẽ cursor lên
-        pixmap_with_cursor = self.__current_pixmap.copy()
+        # Tạo bản sao và vẽ cursor nếu cần
+        pixmap_to_display = self.__current_pixmap
 
-        # Vẽ cursor nếu có thông tin
         if self.__cursor_visible and self.__cursor_position:
-            self.__draw_cursor_on_pixmap(pixmap_with_cursor)
+            # Copy pixmap để vẽ cursor
+            pixmap_to_display = self.__current_pixmap.copy()
+            self.__draw_cursor_on_pixmap(pixmap_to_display)
 
-        # Scale pixmap để vừa với label nhưng giữ aspect ratio
-        scaled_pixmap = pixmap_with_cursor.scaled(
+        # Scale với FastTransformation để nhanh hơn
+        scaled_pixmap = pixmap_to_display.scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+            Qt.TransformationMode.FastTransformation,
         )
         self.image_label.setPixmap(scaled_pixmap)
 

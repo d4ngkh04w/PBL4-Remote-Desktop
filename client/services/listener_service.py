@@ -105,6 +105,19 @@ class ListenerService:
             except:
                 continue
 
+        # Cleanup queue khi worker exits
+        if session_id in cls.__video_queues:
+            del cls.__video_queues[session_id]
+            logger.debug(f"Cleaned up video queue for session: {session_id}")
+
+    @classmethod
+    def stop_video_queue(cls, session_id: str):
+        """Dừng video queue cho session cụ thể."""
+        if session_id in cls.__video_queues:
+            queue = cls.__video_queues[session_id]
+            queue.put(None)  # Signal để worker thread thoát
+            logger.debug(f"Signaled video queue to stop for session: {session_id}")
+
     @classmethod
     def __process_packet(cls, packet: Packet):
         """Wrapper an toàn để xử lý packet trong thread pool."""

@@ -159,17 +159,16 @@ class KeyboardExecutorService:
             return
 
         try:
-            # Chỉ xử lý khi PRESS (khi nhấn xuống)
+            keys = []
+
+            # Chuyển đổi các phím trong tổ hợp
+            for key_name in combination:
+                if key_name in cls.SPECIAL_KEY_MAP:
+                    keys.append(cls.SPECIAL_KEY_MAP[key_name])
+                else:
+                    keys.append(key_name)
+
             if packet.event_type == KeyBoardEventType.PRESS:
-                keys = []
-
-                # Chuyển đổi các phím trong tổ hợp
-                for key_name in combination:
-                    if key_name in cls.SPECIAL_KEY_MAP:
-                        keys.append(cls.SPECIAL_KEY_MAP[key_name])
-                    else:
-                        keys.append(key_name)
-
                 # Nhấn tất cả các phím modifier trước
                 for key in keys[:-1]:
                     cls.__keyboard_controller.press(key)
@@ -186,10 +185,38 @@ class KeyboardExecutorService:
 
                 logger.debug(f"Executed key combination: {'+'.join(combination)}")
 
+            elif packet.event_type == KeyBoardEventType.RELEASE:
+                # Nhả tất cả các phím trong tổ hợp (đề phòng sticky keys)
+                for key in reversed(keys):
+                    try:
+                        cls.__keyboard_controller.release(key)
+                    except Exception:
+                        pass  # Ignore if key was not pressed
+                logger.debug(f"Released key combination: {'+'.join(combination)}")
+
         except Exception as e:
             logger.error(
                 f"Error executing key combination {combination}: {e}", exc_info=True
             )
+
+    @classmethod
+    def clear_all_modifiers(cls):
+        """Release tất cả các modifier keys (ctrl, shift, alt, meta)"""
+        if not cls.__keyboard_controller:
+            return
+
+        modifiers = [
+            keyboard.Key.ctrl,
+            keyboard.Key.shift,
+            keyboard.Key.alt,
+            keyboard.Key.cmd,
+        ]
+        for modifier in modifiers:
+            try:
+                cls.__keyboard_controller.release(modifier)
+            except Exception:
+                pass  # Ignore if key was not pressed
+        logger.debug("Cleared all modifier keys")
 
     @classmethod
     def shutdown(cls):

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class SenderService:
-    __queue = Queue()
+    __queue = Queue(maxsize=5000)  # Tăng lên để hỗ trợ multiple sessions
     __sending_thread = None
     __shutdown_event = threading.Event()
     __socket = None
@@ -52,6 +52,12 @@ class SenderService:
         if cls.__shutdown_event.is_set():
             return
         if cls.__socket:
-            cls.__queue.put(packet)
+            try:
+                cls.__queue.put(packet, block=False)
+            except:
+                # Queue đầy - bỏ qua packet (thường là mouse move)
+                logger.warning(
+                    f"Sender queue full ({cls.__queue.qsize()}), dropping packet {type(packet).__name__}"
+                )
         else:
             logger.warning("Socket is not initialized, cannot send data")
