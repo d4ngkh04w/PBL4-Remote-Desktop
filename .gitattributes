@@ -1,0 +1,8 @@
+*.py text eol=lf
+
+*.png binary
+
+*.ttf binary
+
+*.cur binary
+*.ani binary
